@@ -1,0 +1,44 @@
+newmtl palette
+Kd 0.8 0.8 0.8
+
+newmtl glow
+Kd 0.8 0.8 0.8
+
+newmtl glass
+Kd 0.8 0.8 0.8
+
+newmtl screen_monitor
+Kd 0.8 0.8 0.8
+
+newmtl screen_tv
+Kd 0.8 0.8 0.8
+
+newmtl machine_face
+Kd 0.8 0.8 0.8
+
+newmtl clock_face
+Kd 0.8 0.8 0.8
+
+newmtl window_night
+Kd 0.8 0.8 0.8
+
+newmtl poster
+Kd 0.8 0.8 0.8
+
+newmtl calendar
+Kd 0.8 0.8 0.8
+
+newmtl memo
+Kd 0.8 0.8 0.8
+
+newmtl newspaper
+Kd 0.8 0.8 0.8
+
+newmtl plates
+Kd 0.8 0.8 0.8
+
+newmtl card_face
+Kd 0.8 0.8 0.8
+
+newmtl ball_numbers
+Kd 0.8 0.8 0.8

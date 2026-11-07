@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>No Winners: Art Preview</title>
+<style>
+  body { margin: 0; background: #050507; color: #c8c8bc; font: 13px/1.4 ui-monospace, Menlo, monospace; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+  #bar { position: fixed; top: 8px; left: 8px; display: flex; gap: 4px; flex-wrap: wrap; }
+  button { font: inherit; min-height: 32px; padding: 0 10px; background: #15161d; color: inherit; border: 1px solid #3a3b47; cursor: pointer; }
+</style>
+<script type="importmap">{ "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/" } }</script>
+</head>
+<body>
+<canvas id="view"></canvas>
+<div id="bar"></div>
+<script type="module">
+// Dev tool: lays out the generated assets the way the game will, so art can be judged in place.
+import * as THREE from 'three';
+import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
+
+const ART = '/lucky-number/Assets/Art/';
+const layout = await (await fetch(ART + 'layout.json')).json();
+const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('view'), antialias: true, preserveDrawingBuffer: true });
+renderer.shadowMap.enabled = true;
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#111');
+const camera = new THREE.PerspectiveCamera(layout.camera.fov, 1, 0.05, 40);
+
+const loader = new THREE.TextureLoader();
+const tex = (p) => { const t = loader.load(ART + 'Textures/' + p); t.colorSpace = THREE.SRGBColorSpace; t.magFilter = t.minFilter = THREE.NearestFilter; t.generateMipmaps = false; return t; };
+const palette = tex('palette.png');
+const lit = (map, o = {}) => new THREE.MeshLambertMaterial({ map, flatShading: true, ...o });
+const flat = (map, o = {}) => new THREE.MeshBasicMaterial({ map, ...o });
+const ball = tex('Desk/ball_numbers.png');
+ball.repeat.set(0.1, 0.1); ball.offset.set(0.7, 0.6); ball.wrapS = ball.wrapT = THREE.RepeatWrapping;
+const card = tex('Desk/card_faces.png');
+card.repeat.set(1 / 12, 1 / 4); card.offset.set(3 / 12, 3 / 4);
+const MATS = {
+  palette: lit(palette), glow: flat(palette),
+  glass: new THREE.MeshLambertMaterial({ color: '#cfe8ff', transparent: true, opacity: 0.22, depthWrite: false }),
+  screen_monitor: flat(tex('Mocks/mock_monitor.png')), screen_tv: flat(tex('Mocks/mock_tv.png')),
+  machine_face: flat(null, { color: '#080808' }), clock_face: flat(null, { color: '#080808' }),
+  window_night: flat(tex('Desk/window_night.png')), poster: lit(tex('Desk/poster.png')), calendar: lit(tex('Desk/calendar.png')),
+  memo: lit(tex('Desk/memo.png')), newspaper: lit(tex('Desk/newspaper_clean.png')), plates: flat(tex('Desk/plates.png')),
+  card_face: flat(card, { alphaTest: 0.5 }), ball_numbers: lit(ball),
+};
+
+const obj = new OBJLoader();
+const load = async (name) => {
+  const g = obj.parse(await (await fetch(ART + `Models/${name}.obj`)).text());
+  g.traverse((m) => {
+    if (!m.isMesh) return;
+    m.material = Array.isArray(m.material) ? m.material.map((x) => MATS[x.name]) : MATS[m.material.name];
+    m.castShadow = m.receiveShadow = name !== 'machine_dome' && name !== 'room_shell';
+    if (name === 'room_shell') m.receiveShadow = true;
+  });
+  return g;
+};
+for (const it of layout.items) {
+  const g = await load(it.model);
+  g.position.set(...it.pos); g.rotation.y = it.rotY;
+  scene.add(g);
+}
+// A hand of cards, and a few balls in the dome.
+const cardModel = await load('card');
+['+5', '-3', '×2', '÷3', '+1', '-7'].forEach((label, i) => {
+  const c = cardModel.clone();
+  c.position.set((i - 2.5) * layout.hand.step, layout.hand.y, layout.hand.z); c.rotation.x = layout.hand.tiltX;
+  const idx = layout.cards.indexOf(label), m = MATS.card_face.clone(), t = card.clone();
+  t.offset.set((idx % 12) / 12, 3 / 4 - Math.floor(idx / 12) / 4); t.needsUpdate = true; m.map = t;
+  c.traverse((x) => { if (x.isMesh) x.material = Array.isArray(x.material) ? x.material.map((a, k) => (a === MATS.card_face ? m : a)) : m; });
+  scene.add(c);
+});
+const ballModel = await load('ball');
+for (let i = 0; i < 14; i++) {
+  const b = ballModel.clone();
+  const a = i * 2.4, r = 0.13 + (i % 4) * 0.07;
+  b.position.set(3.1 + Math.cos(a) * r, 0.98 + (i % 5) * 0.09, -1.4 + Math.sin(a) * r);
+  b.rotation.y = -Math.PI / 2;
+  scene.add(b);
+}
+
+const L = layout.lights;
+scene.add(new THREE.HemisphereLight(L.hemi.sky, L.hemi.ground, L.hemi.intensity));
+const sun = new THREE.DirectionalLight(L.sun.color, L.sun.intensity);
+sun.position.set(...L.sun.pos); sun.target.position.set(...L.sun.target); sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -4, right: 4, top: 4, bottom: -4, far: 12 });
+scene.add(sun, sun.target);
+for (const k of ['lamp', 'glow', 'ceiling']) { const p = new THREE.PointLight(L[k].color, L[k].intensity, L[k].range); p.position.set(...L[k].pos); scene.add(p); }
+
+const c = layout.camera;
+const VIEWS = {
+  Desk: [c.eye, c.lookMonitor], Lean: [c.lean, [0, 1.06, -2.945]], TV: [c.eye, c.lookTV], Machine: [c.eye, c.lookMachine],
+  Props: [[0, 1.05, -2.15], [0, 0.78, -2.95]], Room: [[3.4, 2.4, 2.8], [-0.5, 0.9, -2.2]], Monitor: [[0.75, 1.15, -2.2], [0, 1.0, -3.1]],
+};
+const bar = document.getElementById('bar');
+function view(name) {
+  const [e, t] = VIEWS[name];
+  camera.position.set(...e); camera.lookAt(...t);
+  draw();
+}
+function draw() {
+  renderer.setPixelRatio(devicePixelRatio);
+  renderer.setSize(innerWidth, innerHeight, false);
+  camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+  renderer.render(scene, camera);
+}
+Object.keys(VIEWS).forEach((n) => { const b = document.createElement('button'); b.textContent = n; b.onclick = () => view(n); bar.append(b); });
+addEventListener('resize', draw);
+window.setView = view;
+view(new URLSearchParams(location.search).get('v') || 'Desk');
+setInterval(draw, 500); // Textures arrive after the first frame.
+</script>
+</body>
+</html>
