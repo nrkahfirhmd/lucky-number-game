@@ -42,3 +42,36 @@ Kd 0.8 0.8 0.8
 
 newmtl ball_numbers
 Kd 0.8 0.8 0.8
+
+newmtl wall_days
+Kd 0.8 0.8 0.8
+
+newmtl wall_promo
+Kd 0.8 0.8 0.8
+
+newmtl wall_chart
+Kd 0.8 0.8 0.8
+
+newmtl wall_minister
+Kd 0.8 0.8 0.8
+
+newmtl wall_employee
+Kd 0.8 0.8 0.8
+
+newmtl wall_warning
+Kd 0.8 0.8 0.8
+
+newmtl wall_log
+Kd 0.8 0.8 0.8
+
+newmtl wall_smile
+Kd 0.8 0.8 0.8
+
+newmtl wall_firstball
+Kd 0.8 0.8 0.8
+
+newmtl wall_privilege
+Kd 0.8 0.8 0.8
+
+newmtl wall_filed
+Kd 0.8 0.8 0.8

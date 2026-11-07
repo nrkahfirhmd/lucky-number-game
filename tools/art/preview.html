@@ -45,6 +45,7 @@ const MATS = {
   memo: lit(tex('Desk/memo.png')), newspaper: lit(tex('Desk/newspaper_clean.png')), plates: flat(tex('Desk/plates.png')),
   card_face: flat(card, { alphaTest: 0.5 }), ball_numbers: lit(ball),
 };
+for (const n of Object.keys(layout.materials)) if (n.startsWith('wall_')) MATS[n] = lit(tex(`Walls/${n}.png`));
 
 const obj = new OBJLoader();
 const load = async (name) => {
@@ -99,6 +100,7 @@ const bar = document.getElementById('bar');
 function view(name) {
   const [e, t] = VIEWS[name];
   camera.position.set(...e); camera.lookAt(...t);
+  camera.fov = name === 'TV' ? 26 : layout.camera.fov; // The game zooms in on the TV.
   draw();
 }
 function draw() {

@@ -214,6 +214,30 @@ wallPaper('poster', 'poster', 0.75, 1);
 wallPaper('calendar', 'calendar', 0.42, 0.525);
 wallPaper('memo', 'memo', 0.42, 0.525);
 wallPaper('newspaper', 'newspaper', 0.48, 0.5625);
+// A picture in a frame, standing off the wall. Origin at the bottom centre, on the wall.
+const framed = (name, w, h, frame = 'leg', t = 0.025) => make(name, (m) => {
+  m.box(0, 0, 0.012, w + 2 * t, h + 2 * t, 0.012, 'nearBlack');
+  m.plane(0, t + h / 2, 0.025, w, h, name);
+  m.box(0, 0, 0.022, w + 2 * t, t, 0.012, frame); m.box(0, h + t, 0.022, w + 2 * t, t, 0.012, frame);
+  m.box(-w / 2 - t / 2, t, 0.022, t, h, 0.012, frame); m.box(w / 2 + t / 2, t, 0.022, t, h, 0.012, frame);
+});
+// Each entry: model, size and where it hangs. Wall pictures read their own texture of the same name.
+const WALL_ART = [
+  // Left wall, around the TV. The game zooms in here, so these can be small.
+  ['wall_days', 'paper', 0.64, 0.28, [-3.975, 2.42, -0.8], Math.PI / 2],
+  ['wall_promo', 'paper', 0.44, 0.62, [-3.975, 1.15, 0.6], Math.PI / 2],
+  ['wall_chart', 'frame', 0.4, 0.32, [-3.975, 1.92, 0.6], Math.PI / 2],
+  ['wall_minister', 'frame', 0.22, 0.29, [-3.975, 2.38, 0.6], Math.PI / 2],
+  ['wall_employee', 'frame', 0.3, 0.375, [-3.975, 2.12, -2.05], Math.PI / 2],
+  // Right wall, around the ball machine. Seen wide and from further off, so bigger.
+  ['wall_warning', 'paper', 0.7, 0.5, [3.975, 1.95, -1.4], -Math.PI / 2],
+  ['wall_log', 'paper', 0.32, 0.44, [3.975, 1.2, -2.5], -Math.PI / 2],
+  ['wall_smile', 'frame', 0.36, 0.45, [3.975, 1.95, -0.3], -Math.PI / 2],
+  ['wall_firstball', 'frame', 0.3, 0.39, [3.975, 1.25, -0.3], -Math.PI / 2],
+  ['wall_privilege', 'paper', 0.52, 0.73, [3.975, 1.2, 0.5], -Math.PI / 2],
+  ['wall_filed', 'paper', 0.44, 0.62, [3.975, 1.25, 1.3], -Math.PI / 2],
+];
+WALL_ART.forEach(([n, kind, w, h]) => (kind === 'frame' ? framed(n, w, h) : wallPaper(n, n, w, h)));
 
 // ---- Desk and heroes ----
 make('desk', (m) => {
@@ -440,8 +464,9 @@ const layout = {
     // Wall paper, in the gaps either side of the monitor. Newspaper beside the TV, where you look at a result.
     Place('calendar', [-0.93, 0.87, -3.475]),
     Place('memo', [0.93, 0.87, -3.475]),
-    Place('newspaper', [-3.995, 1.45, -2.05], Math.PI / 2),
+    Place('newspaper', [-3.975, 1.4, -1.98], Math.PI / 2),
     Place('desk_plates', [0, DESK_TOP, -2.9]),
+    ...WALL_ART.map(([n, , , , pos, rotY]) => Place(n, pos, rotY)),
   ],
   // Teletext room, with a hint of the monitor's pink. Values from CHOSEN in desk.html.
   lights: {
@@ -458,6 +483,7 @@ const MATERIALS = {
   palette: 'Lit, palette.png', glow: 'Unlit, palette.png', glass: 'Lit transparent', screen_monitor: 'CRT shader', screen_tv: 'CRT shader',
   machine_face: 'Unlit, runtime', clock_face: 'Unlit, runtime', window_night: 'Unlit', poster: 'Lit', calendar: 'Lit', memo: 'Lit', newspaper: 'Lit',
   plates: 'Unlit', card_face: 'Unlit', ball_numbers: 'Lit',
+  ...Object.fromEntries(WALL_ART.map(([n]) => [n, 'Lit, Walls/' + n + '.png'])),
 };
 
 // ---- Write ----

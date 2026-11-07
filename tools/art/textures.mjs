@@ -198,6 +198,104 @@ function fontAtlas() {
   return { g, keys };
 }
 
+// ---- Wall pictures, for the TV and machine views. Every file in Walls gets a material of the same name ----
+const ink = '#1C1E28', paper = '#EDE6CE', red = '#B3241C', blue = '#1A2AA8';
+function hazard(g, x, y, w, h) { for (let i = 0; i < w; i += 8) g.rect(x + i, y, 4, h, ink); }
+function face(g, x, y, s, { hair = '#5a5a58', smile = 2, glasses = false } = {}) {
+  // Block-art head, s pixels per block.
+  const r = (bx, by, bw, bh, c) => g.rect(x + bx * s, y + by * s, bw * s, bh * s, c);
+  r(1, 3, 6, 6, '#E0B090'); r(1, 1, 6, 2, hair); r(0, 2, 1, 4, hair); r(7, 2, 1, 4, hair);
+  r(2, 5, 1, 1, ink); r(5, 5, 1, 1, ink);
+  if (glasses) { r(1, 4, 3, 1, ink); r(4, 4, 3, 1, ink); }
+  if (smile === 0) r(3, 7, 2, 1, '#7a3020');
+  if (smile === 1) { r(2, 7, 4, 1, '#7a3020'); }
+  if (smile === 2) { r(2, 7, 4, 1, '#7a3020'); r(1, 6, 1, 1, '#7a3020'); r(6, 6, 1, 1, '#7a3020'); }
+  if (smile === 3) { r(1, 6, 6, 2, '#7a3020'); r(2, 6, 4, 1, '#F2F2E6'); }
+}
+export function wallArt() {
+  const A = {};
+  { // Show promo, in the screens' Marquee look.
+    const g = new Img(176, 248, C.bg); bulbs(g, 0, 0, 176, 248, 0);
+    g.centred('THE BIG', 18, C.gold, 2, 3).centred('DRAW!', 44, C.gold, 3, 4);
+    [[58, '07'], [118, '77']].forEach(([x, n]) => { g.disc(x, 112, 26, C.ink); g.centred(n, 104, C.bg, 2, 2, x); });
+    g.centred('SATURDAYS 9PM', 152, C.ink).centred('SOMEONE', 172, C.pink, 2, 2).centred('COULD WIN!', 192, C.pink, 2, 2).centred('(NOBODY WILL.)', 222, C.dim);
+    A.wall_promo = g;
+  }
+  { // Days without a winner, like a factory safety board.
+    const g = new Img(256, 112, '#F2F2E6');
+    g.rect(0, 0, 256, 22, '#2E7D32').centred('THIS STUDIO HAS GONE', 7, '#F2F2E6');
+    [...'4721'].forEach((d, i) => { g.rect(40 + i * 46, 30, 40, 50, ink); g.text(d, 48 + i * 46, 37, '#FFE14A', 3, 4); });
+    g.centred('DAYS WITHOUT A WINNER', 90, ink);
+    A.wall_days = g;
+  }
+  { // Sales chart, winners flat on zero.
+    const g = new Img(160, 128, paper);
+    g.centred('TICKET SALES', 8, ink);
+    g.rect(16, 24, 2, 84, ink).rect(16, 106, 132, 2, ink);
+    [14, 22, 30, 38, 52, 60, 70, 82].forEach((h, i) => g.rect(24 + i * 15, 106 - h, 10, h, blue));
+    g.rect(18, 102, 130, 2, red).text('WINNERS: 0', 60, 112, red);
+    A.wall_chart = g;
+  }
+  { // Employee of the month: the machine, every month.
+    const g = new Img(128, 160, paper);
+    g.centred('EMPLOYEE OF', 8, ink).centred('THE MONTH', 20, ink);
+    g.rect(16, 34, 96, 92, '#50625c');
+    g.disc(64, 66, 24, '#B8C8D8'); g.disc(56, 72, 6, '#FFD23A'); g.disc(70, 76, 6, '#E8431F'); g.disc(62, 82, 6, '#F2F2E6');
+    g.rect(48, 88, 32, 30, '#7a2020').rect(44, 88, 40, 4, '#c8a040').rect(54, 100, 20, 10, '#0a0a0e');
+    g.rect(24, 134, 80, 16, '#c8a040').centred('THE MACHINE', 138, ink);
+    A.wall_employee = g;
+  }
+  { // The minister, smiling.
+    const g = new Img(96, 128, '#25309C');
+    face(g, 16, 12, 8, { glasses: true, smile: 3 });
+    g.rect(8, 84, 80, 28, '#1C1E28').rect(44, 84, 8, 24, red).rect(36, 84, 24, 4, '#F2F2E6');
+    g.rect(0, 112, 96, 16, '#c8a040').centred('THE MINISTER', 116, ink);
+    A.wall_minister = g;
+  }
+  { // Hazard sign over the machine.
+    const g = new Img(192, 136, '#FFE14A');
+    hazard(g, 0, 0, 192, 10); hazard(g, 0, 126, 192, 10);
+    g.centred('WARNING', 20, ink, 3, 3).centred('DO NOT TOUCH', 62, ink, 2, 2).centred('THE BALLS', 84, red, 2, 2).centred('THEY ARE HONEST', 108, ink);
+    A.wall_warning = g;
+  }
+  { // The first ball, framed like a trophy.
+    const g = new Img(112, 144, '#2F4A3A');
+    g.disc(56, 56, 30, '#F2F2E6'); g.disc(56, 56, 16, '#FFD23A'); g.centred('1', 49, ink, 2, 2, 56);
+    g.rect(16, 104, 80, 30, '#c8a040').centred('FIRST BALL', 110, ink).centred('1974', 122, ink);
+    A.wall_firstball = g;
+  }
+  { // Ministry poster.
+    const g = new Img(176, 248, '#D8241C');
+    g.disc(88, 80, 54, '#F2F2E6'); g.disc(88, 80, 40, '#D8241C'); g.centred('00', 66, '#F2F2E6', 3, 4, 88);
+    g.centred('CHANCE', 148, '#F2F2E6', 3, 3).centred('IS A', 176, '#F2F2E6', 2, 2).centred('PRIVILEGE', 196, '#FFE14A', 2, 2);
+    g.rect(0, 226, 176, 22, '#1C1E28').centred('NOT A RIGHT.', 233, '#F2F2E6');
+    A.wall_privilege = g;
+  }
+  { // Maintenance log on a clipboard.
+    const g = new Img(96, 132, '#8a6a40');
+    g.rect(6, 10, 84, 116, '#F4EFDC').rect(34, 2, 28, 14, '#8a8a90');
+    g.centred('MACHINE LOG', 22, ink);
+    ['BALLS  100', 'DOME   OK', 'BLOWER OK', 'FAIR   YES', 'RIGGED NO'].forEach((l, i) => g.text(l, 10, 40 + i * 14, i === 4 ? red : ink));
+    g.rect(10, 112, 76, 2, '#7D7766');
+    A.wall_log = g;
+  }
+  { // How to smile on air, three steps.
+    const g = new Img(128, 160, '#F4EFDC');
+    g.centred('HOW TO SMILE', 8, ink).centred('ON AIR', 20, red);
+    [[8, 0, '1'], [48, 2, '2'], [88, 3, '3']].forEach(([x, sm, n]) => { face(g, x, 44, 4, { smile: sm, hair: '#3a2a1a' }); g.centred(n, 84, ink, 1, 1, x + 16); });
+    g.rect(8, 104, 112, 2, ink).centred('NEVER STOP.', 116, ink).centred('THE NATION', 132, ink).centred('IS WATCHING.', 144, ink);
+    A.wall_smile = g;
+  }
+  { // Back-office nag.
+    const g = new Img(160, 224, paper);
+    g.rect(0, 0, 160, 14, ink);
+    g.centred('HAVE', 32, ink, 3, 4).centred('YOU', 72, ink, 3, 4).centred('FILED', 112, ink, 3, 4).centred('IT?', 152, red, 3, 4);
+    g.rect(0, 210, 160, 14, ink).centred('FORM 27-B', 213, paper);
+    A.wall_filed = g;
+  }
+  return A;
+}
+
 // ---- Review mocks: the frames above with sample play values on them ----
 function sampleBoard() {
   let seed = 7;
@@ -276,6 +374,7 @@ export function buildTextures(root, palette) {
   out('Desk/newspaper_shock.png', newspaper('SOMEONE WON', 'SHOCK DRAW'));
   out('Desk/window_night.png', windowNight());
   out('Desk/ball_numbers.png', ballNumbers());
+  Object.entries(wallArt()).forEach(([n, g]) => out(`Walls/${n}.png`, g));
   out('Mocks/mock_monitor.png', mockMonitor());
   out('Mocks/mock_tv.png', mockTV());
   return { fontChars: keys };

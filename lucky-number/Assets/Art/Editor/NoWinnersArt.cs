@@ -11,14 +11,14 @@ using UnityEngine.SceneManagement;
 // The source is tools/art/build.mjs. Everything under Models and Textures gets overwritten by it.
 public class NoWinnersArtImport : AssetPostprocessor
 {
-    public override uint GetVersion() => 1; // Raise this when the rules change, so existing assets reimport.
+    public override uint GetVersion() => 2; // Raise this when the rules change, so existing assets reimport.
 
     void OnPreprocessTexture()
     {
         if (!assetPath.StartsWith(NoWinnersArt.Root + "/Textures")) return;
         var t = (TextureImporter)assetImporter;
         // Paper on the desk is seen small and at an angle, where point filtering garbles the words.
-        var paper = assetPath.Contains("/Desk/");
+        var paper = assetPath.Contains("/Desk/") || assetPath.Contains("/Walls/");
         t.filterMode = paper ? FilterMode.Trilinear : FilterMode.Point;
         t.mipmapEnabled = paper;
         t.anisoLevel = paper ? 8 : 1;
@@ -105,6 +105,12 @@ public static class NoWinnersArt
             ["card_face"] = Mat("card_face", Unlit, "Desk/card_faces.png", new Vector2(1 / 12f, 1 / 4f), new Vector2(0, 3 / 4f)),
             ["ball_numbers"] = Mat("ball_numbers", Lit, "Desk/ball_numbers.png", new Vector2(.1f, .1f), new Vector2(.7f, .6f)),
         };
+        // Wall pictures: one material per texture in Walls, named after the file.
+        foreach (var f in Directory.GetFiles(Root + "/Textures/Walls", "*.png"))
+        {
+            var n = Path.GetFileNameWithoutExtension(f);
+            d[n] = Mat(n, Lit, "Walls/" + Path.GetFileName(f));
+        }
         foreach (var n in new[] { "machine_face", "clock_face" }) d[n].SetColor("_BaseColor", C("#080808"));
 
         var card = d["card_face"];
