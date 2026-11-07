@@ -48,6 +48,21 @@ namespace NoWinners.Tests
             cam = Camera.main;
             yield return Settle();
             LogAssert.NoUnexpectedReceived();
+
+            // Start: the TV title card. A click goes to the menu on the monitor.
+            Assert.AreEqual(Mode.Start, game.Mode);
+            Shot(cam, "0-start");
+            game.Click(Vector2.zero);
+            Assert.AreEqual(Mode.Title, game.Mode);
+            yield return Settle();
+
+            // Title: the menu is on the monitor, START focused. Click it through the real screen collider.
+            Assert.AreEqual(Room.Hex("#FFC93C"), (Color32)game.Room.Monitor.Tex.GetPixel(356, 359 - 200), "START is the focused button");
+            Shot(cam, "0-title");
+            game.Click(game.MonitorToScreen(488, 200));
+            Assert.AreEqual(Mode.Play, game.Mode);
+            Assert.AreEqual(1, game.S.Week);
+            yield return Settle(.3f);
             Shot(cam, "1-off-air");
 
             // Off air: number hidden, cards refuse, one desk action.
@@ -80,6 +95,9 @@ namespace NoWinners.Tests
             int playable = Enumerable.Range(0, game.S.Hand.Count).First(game.CanPlay);
             Assert.AreEqual(Room.Hex("#D9C79A"), (Color32)game.Room.CardFaces[playable].Tex.GetPixel(127, 0), "playable cards light up when the machine locks");
             Shot(cam, "2-on-air");
+            var tv = game.Room.Tv.Tex;
+            File.WriteAllBytes("Logs/Shots/2-tv-live.png", tv.EncodeToPNG());
+            Assert.AreEqual(Room.Hex("#FFF3D6"), (Color32)tv.GetPixel(300, 359 - 160), "on air, the TV stage shows the mystery ball");
 
             int card = Enumerable.Range(0, game.S.Hand.Count).First(i => game.CanPlay(i) && game.S.Board[Run.Apply(roll, game.S.Hand[i]).Value] == 0);
             int to = Run.Apply(roll, game.S.Hand[card]).Value;
@@ -102,11 +120,20 @@ namespace NoWinners.Tests
             Assert.AreEqual(1, game.S.Streak);
             Assert.AreEqual("tv", game.Station);
             yield return Settle();
+            Assert.AreEqual(Room.Hex("#FFF3D6"), (Color32)tv.GetPixel(300, 359 - 160), "the result ball shows the number");
             Shot(cam, "4-tv-clean");
 
-            // Next week: a forced scandal goes TV, then reveal on the monitor, then week 3.
+            // The board and the week's receipt, then next week.
+            game.Click(Vector2.zero);
+            Assert.AreEqual("monitor", game.Station);
+            yield return Settle(.3f);
+            Assert.AreEqual(Room.Hex("#111111"), (Color32)game.Screens.Hud.Tex.GetPixel(184, 359 - 100), "the HUD result card is up");
+            Shot(cam, "4b-result-card");
+            File.WriteAllBytes("Logs/Shots/4b-hud.png", game.Screens.Hud.Tex.EncodeToPNG());
             game.Click(Vector2.zero);
             Assert.AreEqual(2, game.S.Week);
+
+            // Next week: a forced scandal goes TV, then reveal on the monitor, then week 3.
             yield return Settle();
             game.Click(At(game.Room.LiveSwitch));
             yield return Settle(Game.LockSeconds + .2f);
@@ -138,10 +165,16 @@ namespace NoWinners.Tests
             game.LiveAt = Time.time - 1;
             game.Click(At(game.Room.GoButton));
             Assert.AreEqual(Ending.Lost, game.S.Over);
+            Assert.IsFalse(game.EndCardUp, "the TV collapses before the card");
             game.Click(Vector2.zero);
-            yield return Settle();
+            Assert.AreEqual(Ending.Lost, game.S.Over, "a stray click doesn't skip the ending");
+            yield return Settle(2.6f);
+            Assert.IsTrue(game.EndCardUp);
+            Assert.AreEqual(Room.Hex("#23093A"), (Color32)tv.GetPixel(20, 359 - 20), "the TV is on STAND BY");
             Shot(cam, "7-bankrupt");
-            game.Click(Vector2.zero);
+            File.WriteAllBytes("Logs/Shots/7-hud.png", game.Screens.Hud.Tex.EncodeToPNG());
+            File.WriteAllBytes("Logs/Shots/7-tv.png", tv.EncodeToPNG());
+            game.Click(Game.HudToScreen(320, 248));
             Assert.AreEqual((1, Ending.None), (game.S.Week, game.S.Over), "play again starts a new run");
 
             // The look at the machine.
@@ -172,6 +205,20 @@ namespace NoWinners.Tests
             InputSystem.QueueStateEvent(keys, new KeyboardState(Key.A));
             yield return null; yield return null;
             Assert.AreEqual("tv", game.Station, "A looks left");
+
+            // Esc pauses and stops the clock; Esc again resumes.
+            InputSystem.QueueStateEvent(keys, new KeyboardState());
+            yield return null;
+            InputSystem.QueueStateEvent(keys, new KeyboardState(Key.Escape));
+            yield return null; yield return null;
+            Assert.AreEqual((Mode.Paused, 0f), (game.Mode, Time.timeScale));
+            yield return new WaitForSecondsRealtime(.2f);
+            File.WriteAllBytes("Logs/Shots/9-pause-hud.png", game.Screens.Hud.Tex.EncodeToPNG());
+            InputSystem.QueueStateEvent(keys, new KeyboardState());
+            yield return null;
+            InputSystem.QueueStateEvent(keys, new KeyboardState(Key.Escape));
+            yield return null; yield return null;
+            Assert.AreEqual((Mode.Play, 1f), (game.Mode, Time.timeScale));
             InputSystem.RemoveDevice(mouse);
             InputSystem.RemoveDevice(keys);
         }

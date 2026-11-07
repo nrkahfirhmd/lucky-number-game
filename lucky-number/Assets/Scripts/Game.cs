@@ -8,10 +8,25 @@ using UnityEngine.InputSystem;
 
 namespace NoWinners
 {
+    public enum Mode { Start, Title, Play, Paused, Settings }
+
+    // Player settings, kept in PlayerPrefs. The game is fully playable at CRT 0.
+    public static class Prefs
+    {
+        public static float Crt = 1;
+        public static bool ReduceMotion, Long;
+        // ponytail: the handoff names LONG without a number; 30 s is a guess, tune at playtest.
+        public static float Target => Long ? 30 : Config.Target;
+        public static void Load() { Crt = PlayerPrefs.GetFloat("crt", 1); ReduceMotion = PlayerPrefs.GetInt("reduceMotion") == 1; Long = PlayerPrefs.GetInt("longTarget") == 1; }
+        public static void Save() { PlayerPrefs.SetFloat("crt", Crt); PlayerPrefs.SetInt("reduceMotion", ReduceMotion ? 1 : 0); PlayerPrefs.SetInt("longTarget", Long ? 1 : 0); PlayerPrefs.Save(); }
+    }
+
     public class WeekResult
     {
-        public int Number, From, Cards;
+        public float At; // When it aired: the TV and the end cards time from here.
+        public int Number, From, Cards, CashBefore, StreakBefore;
         public string Route, Line;
+        public List<Card> Path, BestPath; // Copied at air time: the hand is trimmed right after.
         public Route Best;
         public Announced Air;
         public bool Revealed;
@@ -23,17 +38,23 @@ namespace NoWinners
         public const float LockSeconds = 1.6f, ReaderSeconds = .58f;
         static readonly string[][] Stalls =
         {
-            new[] { "A JOKE FROM THE HOST", "HOST: \"Why did the ball cross the drum? ...We're still checking.\"" },
-            new[] { "A WORD FROM OUR SPONSOR", "SPONSOR: \"This delay is brought to you by Sunny Gravy.\"" },
-            new[] { "WE ASK THE AUDIENCE", "AUDIENCE: \"Are we on? What did I buy? Who is this?\"" },
-            new[] { "TECHNICAL DIFFICULTIES", "STUDIO: \"Someone find the number! Anyone! Cut to the fish tank!\"" },
+            // Title, desk notice, TV line. The TV line fits the on-air stage at 1x.
+            new[] { "A JOKE FROM THE HOST", "HOST: \"Why did the ball cross the drum? ...We're still checking.\"", "WHY DID THE BALL CROSS THE DRUM?" },
+            new[] { "A WORD FROM OUR SPONSOR", "SPONSOR: \"This delay is brought to you by Sunny Gravy.\"", "THIS DELAY IS BROUGHT TO YOU BY SUNNY GRAVY." },
+            new[] { "WE ASK THE AUDIENCE", "AUDIENCE: \"Are we on? What did I buy? Who is this?\"", "ARE WE ON? WHAT DID I BUY?" },
+            new[] { "TECHNICAL DIFFICULTIES", "STUDIO: \"Someone find the number! Anyone! Cut to the fish tank!\"", "PLEASE ENJOY THE FISH TANK." },
         };
         public static string StallTitle(int i) => Stalls[i % Stalls.Length][0];
+        public static string StallLine(int i) => Stalls[i % Stalls.Length][2];
         static readonly Vector3 Eye = new Vector3(0, 1.32f, 1.92f), LeanEye = new Vector3(0, 1.06f, 2.4f);
         static readonly Vector3 LookMonitor = new Vector3(0, .92f, 3), LookLean = new Vector3(0, 1.06f, 2.945f), LookTv = new Vector3(-3.85f, 1.85f, .8f), LookMachine = new Vector3(3.1f, 1.1f, 1.4f);
         static bool firstRun = true; // Survives a restart, so only the very first week is seeded.
 
         // State the screens read.
+        public Mode Mode { get; private set; } = Mode.Start;
+        public Mode SettingsFrom { get; private set; } = Mode.Title;
+        public int Sel { get; private set; } // The focused button or setting row on whichever menu is up.
+        public float LandedAt = -100; // The last card landed: the monitor rolls its digits from here.
         public Run S { get; private set; }
         public readonly List<int> Played = new List<int>();
         public WeekResult Result { get; private set; }
@@ -51,6 +72,7 @@ namespace NoWinners
         public bool Busy { get; private set; }
 
         Screens screens;
+        public Screens Screens => screens;
         Camera cam;
         Vector3 camPos = Eye, camLook = LookMonitor;
         Vector2 pointer;
@@ -70,11 +92,110 @@ namespace NoWinners
             Room = new Room();
             screens = new Screens(this);
             logPath = Path.Combine(Application.persistentDataPath, "weeks.csv");
+            Prefs.Load();
+            Room.SetCrt(Prefs.Crt);
             StartRun();
+            Mode = Mode.Start; // The TV title card, then the menu on the monitor.
+        }
+
+        // ---- Menus: title and settings on the monitor, pause and end cards on the HUD ----
+        void SetMode(Mode m) { Mode = m; Sel = 0; Time.timeScale = m == Mode.Paused || (m == Mode.Settings && SettingsFrom == Mode.Paused) ? 0 : 1; Refresh(); }
+
+        public void Begin() { StartRun(); SetMode(Mode.Play); }
+        public void ToTitle() { StartRun(); SetMode(Mode.Title); }
+        public void Pause() { if (Mode == Mode.Play && !Busy) SetMode(Mode.Paused); }
+        public void Resume() { if (Mode == Mode.Paused) SetMode(Mode.Play); }
+        public void OpenSettings() { SettingsFrom = Mode; SetMode(Mode.Settings); }
+        public void CloseSettings() { Prefs.Save(); SetMode(SettingsFrom); }
+
+        public void SetCrt(float v) { Prefs.Crt = Mathf.Clamp01(Mathf.Round(v * 20) / 20); Room.SetCrt(Prefs.Crt); }
+
+        // Menu buttons, top to bottom, for whichever menu is up. Empty when none is.
+        System.Action[] Buttons()
+        {
+            if (Mode == Mode.Title) return new System.Action[] { Begin, OpenSettings, Application.Quit };
+            if (Mode == Mode.Paused) return new System.Action[] { Resume, OpenSettings, ToTitle };
+            if (Mode == Mode.Play && EndCardUp) return new System.Action[] { StartRun, ToTitle };
+            return new System.Action[0];
+        }
+
+        // Settings rows: left/right or a click changes the focused one.
+        void Nudge(int dir)
+        {
+            if (Sel == 0) SetCrt(Prefs.Crt + dir * .1f);
+            else if (Sel == 1) Prefs.ReduceMotion = dir > 0;
+            else if (Sel == 2) Prefs.Long = dir > 0;
+        }
+
+        public bool EndCardUp => Result != null && S.Over != Ending.None
+            && Time.time - Result.At >= (S.Over == Ending.Won ? 2 : Prefs.ReduceMotion ? 1.5f : 2.4f);
+
+        // The HUD is drawn at 640x360 and scaled by whole numbers, centred in the window.
+        public static int HudScale => Mathf.Max(1, Mathf.Min(Screen.width / 640, Screen.height / 360));
+        public static UnityEngine.Rect HudRect { get { int s = HudScale; return new UnityEngine.Rect((Screen.width - 640 * s) / 2, (Screen.height - 360 * s) / 2, 640 * s, 360 * s); } }
+        public static Vector2 HudToScreen(int x, int y) { var r = HudRect; return new Vector2(r.x + x * HudScale, Screen.height - r.y - y * HudScale); }
+        static Vector2Int ScreenToHud(Vector2 at) { var r = HudRect; return new Vector2Int(Mathf.FloorToInt((at.x - r.x) / HudScale), Mathf.FloorToInt((Screen.height - at.y - r.y) / HudScale)); }
+
+        // A pixel on the 640x360 monitor picture, through the real screen collider.
+        public Vector2 MonitorToScreen(int x, int y) =>
+            cam.WorldToScreenPoint(Room.MonitorScreen.transform.TransformPoint(new Vector3(x / 640f - .5f, .5f - y / 360f, 0)));
+        Vector2Int MonitorPixel(Collider c, Vector3 point)
+        {
+            if (c != Room.MonitorScreen) return new Vector2Int(-1, -1);
+            var uv = c.transform.InverseTransformPoint(point);
+            return new Vector2Int(Mathf.FloorToInt((uv.x + .5f) * 640), Mathf.FloorToInt((.5f - uv.y) * 360));
+        }
+
+        static bool In(Vector2Int p, int x, int y, int w, int h) => p.x >= x && p.x < x + w && p.y >= y && p.y < y + h;
+
+        void ClickMenu(Vector2 at)
+        {
+            var buttons = Buttons();
+            if (Mode == Mode.Paused || Mode == Mode.Play)
+            {
+                var p = ScreenToHud(at);
+                for (int i = 0; i < buttons.Length; i++)
+                    if (Mode == Mode.Paused ? In(p, 200, 168 + i * 40, 240, 32) : In(p, 176, 232 + i * 40, 288, 32)) { buttons[i](); return; }
+                return;
+            }
+            var m = MonitorPixel(Pick(at, out var point), point);
+            if (Mode == Mode.Title)
+            {
+                for (int i = 0; i < buttons.Length; i++) if (In(m, 352, 184 + i * 40, 272, 32)) { buttons[i](); return; }
+                return;
+            }
+            // Settings.
+            if (In(m, 352, 264, 272, 32)) { CloseSettings(); return; }
+            for (int row = 0; row < 3; row++)
+                if (In(m, 352, 56 + row * 64, 272, 56)) Sel = row;
+            if (In(m, 364, 76, 176, 32)) SetCrt((m.x - 364) / 176f);
+            for (int i = 0; i < 2; i++)
+            {
+                if (In(m, 364 + i * 80, 144, 72, 24)) Prefs.ReduceMotion = i == 1;
+                if (In(m, 364 + i * 112, 208, 104, 24)) Prefs.Long = i == 1;
+            }
+        }
+
+        void MenuKeys(Keyboard keys)
+        {
+            int count = Mode == Mode.Settings ? 4 : Buttons().Length;
+            if (count == 0) return;
+            bool up = keys.upArrowKey.wasPressedThisFrame || keys.wKey.wasPressedThisFrame, down = keys.downArrowKey.wasPressedThisFrame || keys.sKey.wasPressedThisFrame;
+            if (up) Sel = (Sel + count - 1) % count;
+            if (down) Sel = (Sel + 1) % count;
+            bool enter = keys.enterKey.wasPressedThisFrame || keys.spaceKey.wasPressedThisFrame;
+            if (Mode == Mode.Settings)
+            {
+                if (keys.leftArrowKey.wasPressedThisFrame || keys.aKey.wasPressedThisFrame) Nudge(-1);
+                if (keys.rightArrowKey.wasPressedThisFrame || keys.dKey.wasPressedThisFrame) Nudge(1);
+                if (enter && Sel == 3) CloseSettings();
+                return;
+            }
+            if (enter) Buttons()[Mathf.Min(Sel, count - 1)]();
         }
 
         // ---- The week ----
-        public void StartRun() { S = new Run(); runId = DateTime.Now.ToString("yyyyMMdd-HHmmss"); NextWeek(); }
+        public void StartRun() { S = new Run(); Sel = 0; runId = DateTime.Now.ToString("yyyyMMdd-HHmmss"); NextWeek(); }
 
         void NextWeek()
         {
@@ -150,6 +271,7 @@ namespace NoWinners
             card.localScale = scale;
             Busy = false;
             Played.Add(i);
+            LandedAt = Time.time;
             Preview = -1;
             Refresh();
         }
@@ -164,22 +286,20 @@ namespace NoWinners
         // The red button: announce, then step through broadcast, reveal and next week.
         public void Go()
         {
-            if (Busy) return;
-            if (Result != null && Station != "monitor" && (RevealWaiting || S.Over != Ending.None))
+            if (Busy || Mode != Mode.Play) return;
+            if (Result != null && S.Over != Ending.None) return; // The end card's buttons take it from here.
+            if (Result != null && !Result.Revealed)
             {
-                Result.Revealed = true;
+                Result.Revealed = true; // The board, and the HUD's receipt for the week.
                 Station = "monitor";
                 Refresh();
                 return;
             }
-            if (S.Over != Ending.None) { StartRun(); return; }
             if (Result != null) { NextWeek(); return; }
             pressedAt = Time.time;
             if (!Drawn) return;
             Air();
         }
-
-        public bool RevealWaiting => Result != null && Result.Air.Holders > 0 && !Result.Revealed;
 
         // The number goes out. Everything the reveal and the log need is read before announcing changes it.
         void Air()
@@ -191,10 +311,13 @@ namespace NoWinners
             string steps = string.Join(" ", best.Path.Select(i => S.Hand[i].ToString()));
             Result = new WeekResult
             {
-                Number = number, From = from, Best = best, Cards = Played.Count,
+                At = Time.time, Number = number, From = from, Best = best, Cards = Played.Count,
                 Route = string.Join(" ", Played.Select(i => S.Hand[i].ToString())),
                 Line = steps.Length > 0 ? $"{from:00} {steps} = {best.To:00}" : $"{from:00} AS DRAWN",
-                Air = S.Announce(number, Played.Count, seconds <= Config.Target),
+                Path = Played.Select(i => S.Hand[i]).ToList(),
+                BestPath = best.Path.Select(i => S.Hand[i]).ToList(),
+                CashBefore = S.Cash, StreakBefore = S.Streak, // Initialisers run in order, so these read before Announce.
+                Air = S.Announce(number, Played.Count, seconds <= Prefs.Target),
             };
             Log(best, number, rate, seconds);
             if (Result.Air.Tier == Tier.Clean && S.Cleans == 1) Notice = $"HOST: \"Nobody won! So next week's prize grows to {S.Prize} a winner!\"";
@@ -220,7 +343,7 @@ namespace NoWinners
         void CheckStall()
         {
             if (!Live || Result != null) return;
-            float over = LiveSeconds - Config.Target;
+            float over = LiveSeconds - Prefs.Target;
             int i = over < 0 ? -1 : Mathf.FloorToInt(over / Config.StallEvery);
             if (i == Stall) return;
             Stall = i;
@@ -234,9 +357,9 @@ namespace NoWinners
             if (Drawn != wasDrawn) { wasDrawn = Drawn; Refresh(); } // Cards wake up when the machine locks.
             ReadInput();
             CheckStall();
-            if (Time.time - lastDraw > .1f) { screens.DrawTimed(); lastDraw = Time.time; }
+            if (Time.unscaledTime - lastDraw > .1f) { screens.DrawTimed(); lastDraw = Time.unscaledTime; }
             AnimateMachine();
-            Room.GoCap.localPosition = new Vector3(.62f, Time.time - pressedAt < .2f ? .78f : .795f, 2.8f);
+            Room.GoCap.position = Room.GoRest + (Time.time - pressedAt < .2f ? Vector3.down * .015f : Vector3.zero);
             Room.Lever.localEulerAngles = new Vector3(Live ? -34 : 34, 0, 0);
             MoveCamera();
         }
@@ -247,9 +370,17 @@ namespace NoWinners
         {
             var mouse = Mouse.current;
             var keys = Keyboard.current;
-            if (keys != null)
+            if (keys != null && keys.escapeKey.wasPressedThisFrame)
             {
-                if (keys.escapeKey.wasPressedThisFrame && Shredding) { Shredding = false; Refresh(); }
+                if (Mode == Mode.Settings) CloseSettings();
+                else if (Mode == Mode.Paused) Resume();
+                else if (Mode == Mode.Play && Shredding) { Shredding = false; Refresh(); }
+                else Pause();
+            }
+            else if (keys != null && Mode == Mode.Start) { if (keys.anyKey.wasPressedThisFrame) SetMode(Mode.Title); }
+            else if (keys != null && (Mode != Mode.Play || EndCardUp)) MenuKeys(keys);
+            else if (keys != null)
+            {
                 if (keys.spaceKey.wasPressedThisFrame) lean = !lean;
                 int look = Station == "tv" ? 0 : Station == "monitor" ? 1 : 2;
                 if (keys.aKey.wasPressedThisFrame || keys.leftArrowKey.wasPressedThisFrame) look = Mathf.Max(0, look - 1);
@@ -259,7 +390,7 @@ namespace NoWinners
             if (mouse == null) return;
             Vector2 at = mouse.position.ReadValue();
             pointer = new Vector2(at.x / Screen.width * 2 - 1, at.y / Screen.height * 2 - 1);
-            Hover(at);
+            if (Mode == Mode.Play) Hover(at);
             if (mouse.leftButton.wasPressedThisFrame) Click(at);
         }
 
@@ -273,9 +404,9 @@ namespace NoWinners
 
         int SquareAt(Collider c, Vector3 point)
         {
-            if (c != Room.MonitorScreen) return -1;
-            var uv = c.transform.InverseTransformPoint(point);
-            int col = Mathf.FloorToInt(((uv.x + .5f) * 640 - 16) / Screens.Cell), row = Mathf.FloorToInt(((.5f - uv.y) * 360 - 24) / Screens.Cell);
+            var m = MonitorPixel(c, point);
+            if (m.x < 0) return -1;
+            int col = Mathf.FloorToInt((m.x - 16f) / Screens.Cell), row = Mathf.FloorToInt((m.y - 24f) / Screens.Cell);
             return col >= 0 && col < 10 && row >= 0 && row < 10 ? row * 10 + col : -1;
         }
 
@@ -303,6 +434,8 @@ namespace NoWinners
         public void Click(Vector2 at)
         {
             if (Busy) return;
+            if (Mode == Mode.Start) { SetMode(Mode.Title); return; }
+            if (Mode != Mode.Play || EndCardUp) { ClickMenu(at); return; }
             if (Result != null) { Go(); return; }
             if (Station != "monitor") return;
             var c = Pick(at, out var point);
@@ -337,19 +470,21 @@ namespace NoWinners
 
         void MoveCamera()
         {
-            float ease = 1 - Mathf.Exp(-Mathf.Min(Time.deltaTime, .05f) * 5);
-            bool leaning = lean && Station == "monitor";
-            Vector3 look = leaning ? LookLean : Station == "tv" ? LookTv : Station == "machine" ? LookMachine : LookMonitor;
+            float ease = 1 - Mathf.Exp(-Mathf.Min(Time.unscaledDeltaTime, .05f) * 5);
+            bool menu = Mode == Mode.Title || Mode == Mode.Settings; // Menus live on the monitor, seen up close.
+            string at = Mode == Mode.Start ? "tv" : menu ? "monitor" : Station;
+            bool leaning = menu || (lean && at == "monitor" && Mode == Mode.Play);
+            Vector3 look = leaning ? LookLean : at == "tv" ? LookTv : at == "machine" ? LookMachine : LookMonitor;
             camPos = Vector3.Lerp(camPos, leaning ? LeanEye : Eye, ease);
             camLook = Vector3.Lerp(camLook, look, ease);
-            cam.fieldOfView = Mathf.Lerp(cam.fieldOfView, Station == "tv" ? 26 : 50, ease);
+            cam.fieldOfView = Mathf.Lerp(cam.fieldOfView, at == "tv" ? 26 : 50, ease);
             cam.transform.position = camPos + new Vector3(pointer.x * .03f, pointer.y * .015f, 0);
             cam.transform.LookAt(camLook + new Vector3(pointer.x * .05f, pointer.y * .03f, 0));
         }
 
         string Hint()
         {
-            if (Result != null) return $"{Notice} {(RevealWaiting ? "Click to see what you could have done." : S.Over != Ending.None ? "Click to play again." : "Click anywhere to continue.")}".Trim();
+            if (Result != null) return $"{Notice} {(S.Over != Ending.None ? "" : !Result.Revealed ? "Click to see the board." : "Click anywhere for next week.")}".Trim();
             if (Shredding) return "Click a square on the monitor to shred it. Click the shredder to cancel.";
             if (hover != null) return hover;
             if (Notice.Length > 0) return Notice;
@@ -360,6 +495,8 @@ namespace NoWinners
         GUIStyle hintStyle;
         void OnGUI()
         {
+            if (Event.current.type == EventType.Repaint) GUI.DrawTexture(HudRect, screens.Hud.Tex);
+            if (Mode != Mode.Play || Hint().Length == 0) return;
             hintStyle ??= new GUIStyle(GUI.skin.box) { fontSize = Mathf.Max(14, Screen.height / 45), wordWrap = true };
             float w = Screen.width * .8f, h = hintStyle.CalcHeight(new GUIContent(Hint()), w);
             GUI.Box(new UnityEngine.Rect((Screen.width - w) / 2, Screen.height - h - 8, w, h), Hint(), hintStyle);
