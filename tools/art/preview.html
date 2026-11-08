@@ -89,7 +89,7 @@ sun.position.set(...L.sun.pos); sun.target.position.set(...L.sun.target); sun.ca
 sun.shadow.mapSize.set(2048, 2048);
 Object.assign(sun.shadow.camera, { left: -4, right: 4, top: 4, bottom: -4, far: 12 });
 scene.add(sun, sun.target);
-for (const k of ['lamp', 'glow', 'ceiling']) { const p = new THREE.PointLight(L[k].color, L[k].intensity, L[k].range); p.position.set(...L[k].pos); scene.add(p); }
+for (const k of ['lamp', 'glow', 'ceiling', 'table']) { const p = new THREE.PointLight(L[k].color, L[k].intensity, L[k].range); p.position.set(...L[k].pos); scene.add(p); }
 
 const c = layout.camera;
 const VIEWS = {

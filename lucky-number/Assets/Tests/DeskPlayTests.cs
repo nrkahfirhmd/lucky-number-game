@@ -71,6 +71,9 @@ namespace NoWinners.Tests
             yield return null;
             Assert.IsFalse(game.Busy, "cards wait for on air");
             int cash = game.S.Cash;
+            game.Look("machine"); // The desk actions are on the side table.
+            yield return Settle();
+            Shot(cam, "1b-side-table");
             game.Click(At(game.Room.ActionProps[DeskAction.Bribe]));
             Assert.AreEqual(cash + Config.Bribe, game.S.Cash);
             Assert.AreEqual(DeskAction.Bribe, game.S.Acted);
@@ -80,6 +83,8 @@ namespace NoWinners.Tests
             int held = Enumerable.Range(0, 100).First(n => game.S.Board[n] > 0);
             game.Click(At(game.Room.ActionProps[DeskAction.Shred]));
             Assert.IsTrue(game.Shredding);
+            Assert.AreEqual("monitor", game.Station, "shredding turns you to the board");
+            yield return Settle();
             var screen = game.Room.MonitorScreen.transform;
             var world = screen.TransformPoint(new Vector3((16 + held % 10 * 32 + 15) / 640f - .5f, .5f - (24 + held / 10 * 32 + 15) / 360f, 0));
             int before = game.S.Board[held];

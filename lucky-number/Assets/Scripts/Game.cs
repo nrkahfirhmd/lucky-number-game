@@ -211,7 +211,7 @@ namespace NoWinners
             Played.Clear();
             offAt = Time.time;
             S.StartWeek();
-            if (S.Week == 2) Notice = "NOTE ON DESK: \"Off air you get one favour a week. Supplier, bribe or shredder, in front of the monitor.\"";
+            if (S.Week == 2) Notice = "NOTE ON DESK: \"Off air you get one favour a week. Supplier, bribe or shredder, on the side table. Look right.\"";
             if (S.Week == Config.Inspections[0] - 1) Notice = "PHONE: \"Inspectors next week. One card, no more. It's on the calendar.\"";
             Station = "monitor";
             Refresh();
@@ -220,7 +220,7 @@ namespace NoWinners
         public void TakeAction(DeskAction action)
         {
             if (Live || Result != null || S.Acted != null) { Sfx.Play("desk_denied"); return; }
-            if (action == DeskAction.Shred) { Shredding = !Shredding; Refresh(); return; }
+            if (action == DeskAction.Shred) { Shredding = !Shredding; if (Shredding) Look("monitor"); Refresh(); return; } // Aim it at the board.
             int lost = S.LostCards;
             S.TakeAction(action);
             Notice = action == DeskAction.Bribe ? $"Minister's envelope: +{Config.Bribe} cash. The prize is now {S.Prize} a holder."
@@ -422,7 +422,7 @@ namespace NoWinners
         {
             Collider c = null;
             var point = default(Vector3);
-            if (Station == "monitor" && Result == null) c = Pick(at, out point);
+            if ((Station == "monitor" || Station == "machine") && Result == null) c = Pick(at, out point);
             int preview = Shredding ? SquareAt(c, point) : -1;
             hover = null;
             int over = c == null ? -1 : Array.FindIndex(Room.Cards, t => t.GetComponent<Collider>() == c);
@@ -445,9 +445,10 @@ namespace NoWinners
             if (Mode == Mode.Start) { SetMode(Mode.Title); return; }
             if (Mode != Mode.Play || EndCardUp) { ClickMenu(at); return; }
             if (Result != null) { Go(); return; }
-            if (Station != "monitor") return;
+            if (Station != "monitor" && Station != "machine") return;
             var c = Pick(at, out var point);
             if (c == null) return;
+            if (Station == "machine") { foreach (var kv in Room.ActionProps) if (c == kv.Value) TakeAction(kv.Key); return; } // The side table.
             if (Shredding && SquareAt(c, point) >= 0) { ShredSquare(SquareAt(c, point)); return; }
             if (c == Room.GoButton) { Go(); return; }
             if (c == Room.UndoButton) { Undo(); return; }
@@ -493,10 +494,10 @@ namespace NoWinners
         string Hint()
         {
             if (Result != null) return $"{Notice} {(S.Over != Ending.None ? "" : !Result.Revealed ? "Click to see the board." : "Click anywhere for next week.")}".Trim();
-            if (Shredding) return "Click a square on the monitor to shred it. Click the shredder to cancel.";
+            if (Shredding) return "Click a square on the monitor to shred it. Esc to cancel.";
             if (hover != null) return hover;
             if (Notice.Length > 0) return Notice;
-            return Live ? "On air: rig the number with your cards, then press the red button." : "Off air, no clock. Take one desk action if you want, then flip GO LIVE.";
+            return Live ? "On air: rig the number with your cards, then press the red button." : "Off air, no clock. Look right for one desk action if you want, then flip GO LIVE.";
         }
 
         // ponytail: plain IMGUI line for notes and stalls. Replace with notes on the desk at the Comedy milestone.

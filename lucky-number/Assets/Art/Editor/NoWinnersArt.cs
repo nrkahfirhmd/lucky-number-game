@@ -73,7 +73,7 @@ public static class NoWinnersArt
 
     [System.Serializable] class Item { public string model; public float[] pos; public float rotY; }
     [System.Serializable] class Light3 { public string color, sky, ground; public float intensity, range; public float[] pos, target; }
-    [System.Serializable] class Lights { public Light3 hemi, sun, lamp, glow, ceiling; }
+    [System.Serializable] class Lights { public Light3 hemi, sun, lamp, glow, ceiling, table; }
     [System.Serializable] class Cam { public float fov; public float[] eye, lookMonitor, lookTV, lookMachine; }
     [System.Serializable] class Layout { public Item[] items; public Lights lights; public Cam camera; }
 
@@ -236,7 +236,7 @@ public static class NoWinnersArt
             p.type = LightType.Point; p.color = C(l.color); p.intensity = l.intensity * toUnity; p.range = l.range;
             p.transform.position = V(l.pos);
         }
-        Point("Lamp", L.lamp); Point("Monitor Glow", L.glow); Point("Ceiling", L.ceiling);
+        Point("Lamp", L.lamp); Point("Monitor Glow", L.glow); Point("Ceiling", L.ceiling); Point("Table Lamp", L.table);
 
         var cam = new GameObject("Player Camera", typeof(Camera), typeof(AudioListener)).GetComponent<Camera>();
         cam.tag = "MainCamera"; cam.fieldOfView = layout.camera.fov; cam.nearClipPlane = .05f; cam.farClipPlane = 40;

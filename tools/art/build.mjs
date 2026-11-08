@@ -406,6 +406,16 @@ make('mug', (m) => {
   m.box(0.05, 0.025, 0, 0.01, 0.04, 0.012, 'mug');
   m.box(0.044, 0.06, 0, 0.018, 0.01, 0.012, 'mug'); m.box(0.044, 0.018, 0, 0.018, 0.01, 0.012, 'mug');
 });
+make('side_table', (m) => {
+  // Long side along Z, so its three things spread left to right from the chair.
+  const W = 0.5, D = 1.0, H = 0.8;
+  m.box(0, H - 0.03, 0, W, 0.03, D, 'desk');
+  m.box(0, H - 0.05, 0, W - 0.04, 0.02, D - 0.04, 'deskDark');
+  for (const [x, z] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) m.box(x * (W / 2 - 0.03), 0, z * (D / 2 - 0.03), 0.04, H - 0.05, 0.04, 'leg');
+  m.box(0, 0.2, 0, W - 0.06, 0.02, D - 0.06, 'deskDark'); // Lower shelf.
+  m.box(0.05, 0.22, -0.2, 0.3, 0.08, 0.22, 'paper'); // Paper waiting for the shredder.
+  m.box(0, 0.22, 0.22, 0.32, 0.18, 0.24, 'envelopeDark'); // A box of envelopes.
+});
 // A punch card with its clipped corner. Hand poses come from code.
 make('card', (m) => {
   const w = 0.125, h = 0.172, c = 0.024;
@@ -423,13 +433,14 @@ make('desk_plates', (m) => {
     m.at([x, 0.04, z], { rotX: -0.5 }, () => m.plane(0, 0, 0.001, w, h, 'plates', { uv: row(PLATES.indexOf(label)) }));
   });
   // Desk actions are explained on the staff notice, so only the controls keep a label.
-  place('GO LIVE', 0.5, 0.05, 0.15, 0.025);
-  place('EJECT', -0.56, 0.28, 0.12, 0.02);
+  place('GO LIVE', 0.55, 0.005, 0.15, 0.025);
+  place('EJECT', -0.53, 0.28, 0.12, 0.02);
   place('ROLL IT', 0.6, 0.3, 0.17, 0.032);
 });
 
 // ---- Where things go. Same positions as desk.html: right-handed, player looks along -Z ----
 const DESK_TOP = 0.773;
+const TABLE_TOP = 0.8;
 const Place = (model, pos, rotY = 0) => ({ model, pos, rotY });
 const layout = {
   items: [
@@ -444,21 +455,19 @@ const layout = {
     Place('tv', [-4, 1.85, -0.8], Math.PI / 2),
     Place('machine_base', [3.1, 0, -1.4], -Math.PI / 2),
     Place('machine_dome', [3.1, 0, -1.4], -Math.PI / 2),
-    // Left: card reader and eject. Under the monitor: the three desk actions. Right: the controls.
-    Place('card_reader', [-0.66, DESK_TOP, -2.95]),
-    Place('card_reader_lamp', [-0.59, DESK_TOP + 0.05, -2.884]),
-    Place('undo_button_base', [-0.56, DESK_TOP, -2.72]),
-    Place('undo_button_cap', [-0.56, DESK_TOP + 0.018, -2.72]),
-    Place('phone', [-0.36, DESK_TOP, -2.88]),
-    Place('phone_handset', [-0.36, DESK_TOP + 0.084, -2.905]),
-    Place('envelope', [-0.04, DESK_TOP, -2.88]),
-    Place('shredder', [0.27, DESK_TOP, -2.88]),
-    Place('switch_base', [0.5, DESK_TOP, -2.95]),
-    Place('switch_lever', [0.5, DESK_TOP + 0.028, -2.95]),
-    Place('big_button_base', [0.62, DESK_TOP, -2.72]),
-    Place('big_button_cap', [0.62, DESK_TOP + 0.015, -2.72]),
-    Place('clock', [0.72, DESK_TOP, -3.22]),
-    Place('mug', [0.95, DESK_TOP, -3.02]),
+    // Nothing sits in front of the monitor except the card hand, so the board is never covered.
+    // Left of the monitor, on air: card reader with eject in front, clock behind.
+    Place('card_reader', [-0.54, DESK_TOP, -2.95]),
+    Place('card_reader_lamp', [-0.47, DESK_TOP + 0.05, -2.884]),
+    Place('undo_button_base', [-0.53, DESK_TOP, -2.72]),
+    Place('undo_button_cap', [-0.53, DESK_TOP + 0.018, -2.72]),
+    Place('clock', [-0.72, DESK_TOP, -3.22], 0.35),
+    Place('mug', [-0.9, DESK_TOP, -3.0]),
+    // Right of the monitor: the go-live switch with the red button in front.
+    Place('switch_base', [0.55, DESK_TOP, -2.97]),
+    Place('switch_lever', [0.55, DESK_TOP + 0.028, -2.97]),
+    Place('big_button_base', [0.6, DESK_TOP, -2.72]),
+    Place('big_button_cap', [0.6, DESK_TOP + 0.015, -2.72]),
     // Pushed to the desk's corner and turned inward, so it frames the calendar rather than covering it.
     Place('lamp', [-0.88, DESK_TOP, -2.72], 1.2),
     // Wall paper, in the gaps either side of the monitor. Newspaper beside the TV, where you look at a result.
@@ -466,6 +475,14 @@ const layout = {
     Place('memo', [0.93, 0.87, -3.475]),
     Place('newspaper', [-3.975, 1.4, -1.98], Math.PI / 2),
     Place('desk_plates', [0, DESK_TOP, -2.9]),
+    // Side table between the desk and the ball machine, seen when you look right. The three desk actions, facing the chair,
+    // kept left of the machine's number window.
+    Place('side_table', [1.75, 0, -2.25]),
+    Place('lamp', [1.85, TABLE_TOP, -2.65]),
+    Place('shredder', [1.75, TABLE_TOP, -2.46], -Math.PI / 2),
+    Place('envelope', [1.75, TABLE_TOP, -2.17], -Math.PI / 2),
+    Place('phone', [1.75, TABLE_TOP, -1.9], -Math.PI / 2),
+    Place('phone_handset', [1.775, TABLE_TOP + 0.084, -1.9], -Math.PI / 2),
     ...WALL_ART.map(([n, , , , pos, rotY]) => Place(n, pos, rotY)),
   ],
   // Teletext room, with a hint of the monitor's pink. Values from CHOSEN in desk.html.
@@ -474,7 +491,8 @@ const layout = {
     sun: { color: '#fff1d6', intensity: 1.5, pos: [2.5, 2.8, 1], target: [0, 0.7, -2.6] },
     lamp: { color: '#ffb66b', intensity: 3, range: 5, pos: [-0.77, 1.25, -2.68] },
     glow: { color: '#ff50b0', intensity: 0.2, range: 2.5, pos: [0, 1.05, -2.6] },
-    ceiling: { color: '#e8f0e0', intensity: 7, range: 9, pos: [0, 2.85, -1.6] }, // Keeps the TV and machine readable.
+    ceiling: { color: '#e8f0e0', intensity: 7, range: 9, pos: [0, 2.85, -1.6] },
+    table: { color: '#ffb66b', intensity: 1.5, range: 2.5, pos: [1.85, 1.3, -2.53] }, // Side-table lamp. // Keeps the TV and machine readable.
   },
   camera: { fov: 50, eye: [0, 1.32, -1.92], lookMonitor: [0, 0.92, -3], lookTV: [-3.85, 1.85, -0.8], lookMachine: [3.1, 1.1, -1.4], lean: [0, 1.06, -2.4] },
   hand: { z: -2.66, y: 0.8, tiltX: -Math.PI / 2 + 0.25, step: 0.145 },
