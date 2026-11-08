@@ -11,10 +11,19 @@ using UnityEngine.SceneManagement;
 // The source is tools/art/build.mjs. Everything under Models and Textures gets overwritten by it.
 public class NoWinnersArtImport : AssetPostprocessor
 {
-    public override uint GetVersion() => 3; // Raise this when the rules change, so existing assets reimport.
+    public override uint GetVersion() => 4; // Raise this when the rules change, so existing assets reimport.
 
     void OnPreprocessTexture()
     {
+        if (assetPath.StartsWith(NoWinnersArt.Root + "/Resources/Cursors"))
+        {
+            var c = (TextureImporter)assetImporter;
+            c.textureType = TextureImporterType.Cursor;
+            c.filterMode = FilterMode.Point;
+            c.textureCompression = TextureImporterCompression.Uncompressed;
+            c.alphaIsTransparency = true;
+            return;
+        }
         if (!assetPath.StartsWith(NoWinnersArt.Root + "/Textures")) return;
         var t = (TextureImporter)assetImporter;
         // Paper on the desk is seen small and at an angle, where point filtering garbles the words.
@@ -28,7 +37,6 @@ public class NoWinnersArtImport : AssetPostprocessor
         t.alphaIsTransparency = true;
         // Screens and sprites get blitted into the 640x360 screen textures at runtime.
         t.isReadable = assetPath.Contains("/Screens/") || assetPath.Contains("/Sprites/");
-        if (assetPath.Contains("cursor")) t.textureType = TextureImporterType.Cursor;
     }
 
     void OnPreprocessModel()

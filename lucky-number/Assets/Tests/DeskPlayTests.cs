@@ -197,9 +197,12 @@ namespace NoWinners.Tests
             IEnumerator Mouse(Vector2 at, bool down) { InputSystem.QueueStateEvent(mouse, new MouseState { position = at, buttons = (ushort)(down ? 1 : 0) }); yield return null; yield return null; }
             Vector2 live = cam.WorldToScreenPoint(game.Room.LiveSwitch.bounds.center);
             yield return Mouse(live, false);
+            Assert.AreEqual((Pointer.Kind.Hand, "GO LIVE"), (Pointer.Current, Pointer.Label), "a usable prop gets the hand and its name");
             yield return Mouse(cam.WorldToScreenPoint(game.Room.LiveSwitch.bounds.center), true);
             yield return Mouse(cam.WorldToScreenPoint(game.Room.LiveSwitch.bounds.center), false);
             Assert.IsTrue(game.Live, "a real mouse click flips GO LIVE");
+            yield return Mouse(cam.WorldToScreenPoint(game.Room.LiveSwitch.bounds.center), false);
+            Assert.AreEqual((Pointer.Kind.No, "GO LIVE: ALREADY ON AIR"), (Pointer.Current, Pointer.Label), "an unusable prop says why");
             yield return Settle(Game.LockSeconds + .2f);
             int hoverCard = Enumerable.Range(0, game.S.Hand.Count).FirstOrDefault(game.CanPlay);
             if (game.CanPlay(hoverCard))

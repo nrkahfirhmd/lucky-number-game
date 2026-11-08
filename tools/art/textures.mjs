@@ -179,12 +179,30 @@ function ballNumbers() {
   }
   return g;
 }
-function cursor() {
-  const g = new Img(32, 32), rows = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 6, 3, 4, 4, 2];
-  const pts = rows.map((w, y) => [w, y]);
-  pts.forEach(([w, y]) => g.rect(0, y * 2, (w + 1) * 2, 2, '#0A0A12'));
-  pts.forEach(([w, y]) => { if (y < 14) g.rect(2, y * 2, Math.max(0, (w - 1) * 2), 2, '#F2F2E6'); });
+// Cursors: 16x16 masks drawn at 2x, with a dark outline so they read on any background.
+// arrow: nothing to click. hand: you can use this. no: you can't use this right now.
+function sprite(mask, fill, mark) {
+  const g = new Img(32, 32), on = (x, y) => mask[y]?.[x] === 'X';
+  for (let y = -1; y <= 16; y++) for (let x = -1; x <= 16; x++)
+    if (!on(x, y) && [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]].some(([a, b]) => on(x + a, y + b))) g.rect(2 + x * 2, 2 + y * 2, 2, 2, '#0A0A12');
+  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) if (on(x, y)) g.rect(2 + x * 2, 2 + y * 2, 2, 2, fill);
+  if (mark) mark(g);
   return g;
+}
+export const CURSORS = {
+  // Hotspot in pixels from the top left, for Cursor.SetCursor.
+  arrow: [2, 2], hand: [10, 2], no: [16, 16],
+};
+function cursors() {
+  const arrow = sprite(['X', 'XX', 'XXX', 'XXXX', 'XXXXX', 'XXXXXX', 'XXXXXXX', 'XXXXXXXX', 'XXXXXXXXX', 'XXXXXX', 'XXX.XXX', 'XX..XXX', 'X....XXX', '.....XXX', '......X'], '#F2F2E6');
+  const hand = sprite(['....XX', '....XX', '....XX', '....XX', '....XXXXXXX', '....XXXXXXXX', '.XX.XXXXXXXX', '.XXXXXXXXXXX', '..XXXXXXXXXX', '..XXXXXXXXXX', '...XXXXXXXXX', '...XXXXXXXX', '....XXXXXXX', '....XXXXXXX'], '#FFD23A',
+    (g) => { [14, 18].forEach((x) => g.rect(x, 12, 2, 6, '#9A7A2C')); });
+  const mask = Array.from({ length: 16 }, (_, y) => Array.from({ length: 16 }, (_, x) => {
+    const dx = x - 7.5, dy = y - 7.5, d = Math.hypot(dx, dy);
+    return d < 7.6 && (d > 5.2 || Math.abs(dx - dy) < 1.6) ? 'X' : '.';
+  }).join(''));
+  const no = sprite(mask, '#FF3B2F');
+  return { arrow, hand, no };
 }
 function logo() {
   const g = new Img(320, 64, '#FFC93C');
@@ -359,7 +377,8 @@ export function buildTextures(root, palette) {
   out('Sprites/cell_preview.png', one((g) => { for (let i = 0; i < 34; i += 6) { g.rect(i, 0, 3, 2, '#FFFFFF').rect(i, 32, 3, 2, '#FFFFFF').rect(0, i, 2, 3, '#FFFFFF').rect(32, i, 2, 3, '#FFFFFF'); } }));
   const drums = new Img(840, 88); [...'0123456789'].forEach((d, i) => drum(drums, d, i * 84, 0)); out('Sprites/drums.png', drums);
   const { g: fa, keys } = fontAtlas(); out('Sprites/font8x8.png', fa);
-  out('Sprites/cursor.png', cursor());
+  // In Resources, so the game can load them by name.
+  Object.entries(cursors()).forEach(([n, g]) => { const f = join(root, 'Resources', 'Cursors', `cursor_${n}.png`); mkdirSync(dirname(f), { recursive: true }); writeFileSync(f, g.png()); });
   out('Sprites/logo.png', logo());
 
   const atlas = new Img(CARD_W * 12, CARD_H * 4);
