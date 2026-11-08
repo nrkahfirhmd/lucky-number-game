@@ -225,17 +225,25 @@ namespace NoWinners
         void SettingsPanel(Canvas8 g)
         {
             g.Text("SETTINGS", 352, 24, Label, 2, 2);
-            SetRow(g, 56, "CRT STRENGTH", game.Sel == 0);
-            int fill = Mathf.RoundToInt(176 * Prefs.Crt);
-            g.Rect(364, 88, 176, 8, Line);
-            g.Rect(364, 88, fill, 8, Label);
-            g.Rect(364 + fill - 4, 80, 8, 24, Ink);
-            g.Right($"{Mathf.RoundToInt(Prefs.Crt * 100)}%", 612, 84, Ink, 1, 2);
-            SetRow(g, 120, "REDUCE MOTION", game.Sel == 1);
-            Seg(g, 364, 144, 72, new[] { "OFF", "ON" }, Prefs.ReduceMotion ? 1 : 0);
-            SetRow(g, 184, "ON-AIR TARGET", game.Sel == 2);
-            Seg(g, 364, 208, 104, new[] { "NORMAL", "LONG" }, Prefs.Long ? 1 : 0);
-            MonButton(g, 352, 264, 272, "BACK", game.Sel == 3);
+            // Rows every 64 px from y 44, BACK below. Game.ClickMenu hit-tests the same layout.
+            SetRow(g, 44, "CRT STRENGTH", game.Sel == 0);
+            Slider(g, 44, Prefs.Crt);
+            SetRow(g, 108, "VOLUME", game.Sel == 1);
+            Slider(g, 108, Prefs.Volume);
+            SetRow(g, 172, "REDUCE MOTION", game.Sel == 2);
+            Seg(g, 364, 196, 72, new[] { "OFF", "ON" }, Prefs.ReduceMotion ? 1 : 0);
+            SetRow(g, 236, "ON-AIR TARGET", game.Sel == 3);
+            Seg(g, 364, 260, 104, new[] { "NORMAL", "LONG" }, Prefs.Long ? 1 : 0);
+            MonButton(g, 352, 300, 272, "BACK", game.Sel == Game.SettingRows);
+        }
+
+        static void Slider(Canvas8 g, int y, float v)
+        {
+            int fill = Mathf.RoundToInt(176 * v);
+            g.Rect(364, y + 32, 176, 8, Line);
+            g.Rect(364, y + 32, fill, 8, Label);
+            g.Rect(364 + fill - 4, y + 24, 8, 24, Ink);
+            g.Right($"{Mathf.RoundToInt(v * 100)}%", 612, y + 28, Ink, 1, 2);
         }
 
         static void SetRow(Canvas8 g, int y, string label, bool focused)

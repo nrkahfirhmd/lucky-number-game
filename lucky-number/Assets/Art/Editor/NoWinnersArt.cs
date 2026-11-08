@@ -11,7 +11,7 @@ using UnityEngine.SceneManagement;
 // The source is tools/art/build.mjs. Everything under Models and Textures gets overwritten by it.
 public class NoWinnersArtImport : AssetPostprocessor
 {
-    public override uint GetVersion() => 2; // Raise this when the rules change, so existing assets reimport.
+    public override uint GetVersion() => 3; // Raise this when the rules change, so existing assets reimport.
 
     void OnPreprocessTexture()
     {
@@ -45,6 +45,24 @@ public class NoWinnersArtImport : AssetPostprocessor
         m.importLights = false;
         m.materialImportMode = ModelImporterMaterialImportMode.ImportStandard;
         m.materialLocation = ModelImporterMaterialLocation.InPrefab;
+    }
+
+    // Sound effects come from tools/sfx/build.mjs. Short ones stay ADPCM for instant, cheap playback;
+    // loops and long broadcast pieces use Vorbis to keep the build small.
+    void OnPreprocessAudio()
+    {
+        if (!assetPath.StartsWith(NoWinnersArt.Root + "/Resources/Audio")) return;
+        var a = (AudioImporter)assetImporter;
+        var longClip = new FileInfo(assetPath).Length > 44100 * 2 * 3; // Over about 3 s of mono.
+        a.forceToMono = false;
+        a.loadInBackground = false;
+        var s = a.defaultSampleSettings;
+        s.loadType = AudioClipLoadType.DecompressOnLoad;
+        s.compressionFormat = longClip ? AudioCompressionFormat.Vorbis : AudioCompressionFormat.ADPCM;
+        s.quality = 0.7f;
+        s.preloadAudioData = true; // No hitch the first time a sound plays.
+        s.sampleRateSetting = AudioSampleRateSetting.PreserveSampleRate;
+        a.defaultSampleSettings = s;
     }
 }
 

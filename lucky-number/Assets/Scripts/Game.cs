@@ -13,12 +13,12 @@ namespace NoWinners
     // Player settings, kept in PlayerPrefs. The game is fully playable at CRT 0.
     public static class Prefs
     {
-        public static float Crt = 1;
+        public static float Crt = 1, Volume = .8f;
         public static bool ReduceMotion, Long;
         // ponytail: the handoff names LONG without a number; 30 s is a guess, tune at playtest.
         public static float Target => Long ? 30 : Config.Target;
-        public static void Load() { Crt = PlayerPrefs.GetFloat("crt", 1); ReduceMotion = PlayerPrefs.GetInt("reduceMotion") == 1; Long = PlayerPrefs.GetInt("longTarget") == 1; }
-        public static void Save() { PlayerPrefs.SetFloat("crt", Crt); PlayerPrefs.SetInt("reduceMotion", ReduceMotion ? 1 : 0); PlayerPrefs.SetInt("longTarget", Long ? 1 : 0); PlayerPrefs.Save(); }
+        public static void Load() { Crt = PlayerPrefs.GetFloat("crt", 1); Volume = PlayerPrefs.GetFloat("volume", .8f); ReduceMotion = PlayerPrefs.GetInt("reduceMotion") == 1; Long = PlayerPrefs.GetInt("longTarget") == 1; }
+        public static void Save() { PlayerPrefs.SetFloat("crt", Crt); PlayerPrefs.SetFloat("volume", Volume); PlayerPrefs.SetInt("reduceMotion", ReduceMotion ? 1 : 0); PlayerPrefs.SetInt("longTarget", Long ? 1 : 0); PlayerPrefs.Save(); }
     }
 
     public class WeekResult
@@ -64,6 +64,7 @@ namespace NoWinners
         public int Stall { get; private set; } = -1;
         public string Station { get; private set; } = "monitor";
         public Room Room { get; private set; }
+        public Sfx Sfx { get; private set; }
         public string Notice = "";
         public float RolledAt = -100, LiveAt;
         public bool Drawn => Live && Time.time >= LiveAt; // The number exists, and cards can be played.
@@ -79,6 +80,7 @@ namespace NoWinners
         bool lean, wasDrawn;
         float offAt, lastDraw = -100, pressedAt = -100;
         string hover;
+        public string HoverText => hover;
         string runId, logPath;
         public static bool KeepLog = true;
 
@@ -94,6 +96,7 @@ namespace NoWinners
             logPath = Path.Combine(Application.persistentDataPath, "weeks.csv");
             Prefs.Load();
             Room.SetCrt(Prefs.Crt);
+            Sfx = gameObject.AddComponent<Sfx>();
             StartRun();
             Mode = Mode.Start; // The TV title card, then the menu on the monitor.
         }
@@ -109,6 +112,8 @@ namespace NoWinners
         public void CloseSettings() { Prefs.Save(); SetMode(SettingsFrom); }
 
         public void SetCrt(float v) { Prefs.Crt = Mathf.Clamp01(Mathf.Round(v * 20) / 20); Room.SetCrt(Prefs.Crt); }
+        public void SetVolume(float v) => Prefs.Volume = Mathf.Clamp01(Mathf.Round(v * 20) / 20);
+        public const int SettingRows = 4; // CRT, volume, reduce motion, on-air target. BACK comes after.
 
         // Menu buttons, top to bottom, for whichever menu is up. Empty when none is.
         System.Action[] Buttons()
@@ -123,8 +128,9 @@ namespace NoWinners
         void Nudge(int dir)
         {
             if (Sel == 0) SetCrt(Prefs.Crt + dir * .1f);
-            else if (Sel == 1) Prefs.ReduceMotion = dir > 0;
-            else if (Sel == 2) Prefs.Long = dir > 0;
+            else if (Sel == 1) SetVolume(Prefs.Volume + dir * .1f);
+            else if (Sel == 2) Prefs.ReduceMotion = dir > 0;
+            else if (Sel == 3) Prefs.Long = dir > 0;
         }
 
         public bool EndCardUp => Result != null && S.Over != Ending.None
@@ -164,21 +170,22 @@ namespace NoWinners
                 for (int i = 0; i < buttons.Length; i++) if (In(m, 352, 184 + i * 40, 272, 32)) { buttons[i](); return; }
                 return;
             }
-            // Settings.
-            if (In(m, 352, 264, 272, 32)) { CloseSettings(); return; }
-            for (int row = 0; row < 3; row++)
-                if (In(m, 352, 56 + row * 64, 272, 56)) Sel = row;
-            if (In(m, 364, 76, 176, 32)) SetCrt((m.x - 364) / 176f);
+            // Settings: rows every 64 px from y 44, BACK below them. Screens.SettingsPanel draws the same layout.
+            if (In(m, 352, 300, 272, 32)) { CloseSettings(); return; }
+            for (int row = 0; row < SettingRows; row++)
+                if (In(m, 352, 44 + row * 64, 272, 56)) Sel = row;
+            if (In(m, 364, 64, 176, 32)) SetCrt((m.x - 364) / 176f);
+            if (In(m, 364, 128, 176, 32)) SetVolume((m.x - 364) / 176f);
             for (int i = 0; i < 2; i++)
             {
-                if (In(m, 364 + i * 80, 144, 72, 24)) Prefs.ReduceMotion = i == 1;
-                if (In(m, 364 + i * 112, 208, 104, 24)) Prefs.Long = i == 1;
+                if (In(m, 364 + i * 80, 196, 72, 24)) Prefs.ReduceMotion = i == 1;
+                if (In(m, 364 + i * 112, 260, 104, 24)) Prefs.Long = i == 1;
             }
         }
 
         void MenuKeys(Keyboard keys)
         {
-            int count = Mode == Mode.Settings ? 4 : Buttons().Length;
+            int count = Mode == Mode.Settings ? SettingRows + 1 : Buttons().Length;
             if (count == 0) return;
             bool up = keys.upArrowKey.wasPressedThisFrame || keys.wKey.wasPressedThisFrame, down = keys.downArrowKey.wasPressedThisFrame || keys.sKey.wasPressedThisFrame;
             if (up) Sel = (Sel + count - 1) % count;
@@ -188,7 +195,7 @@ namespace NoWinners
             {
                 if (keys.leftArrowKey.wasPressedThisFrame || keys.aKey.wasPressedThisFrame) Nudge(-1);
                 if (keys.rightArrowKey.wasPressedThisFrame || keys.dKey.wasPressedThisFrame) Nudge(1);
-                if (enter && Sel == 3) CloseSettings();
+                if (enter && Sel == SettingRows) CloseSettings();
                 return;
             }
             if (enter) Buttons()[Mathf.Min(Sel, count - 1)]();
@@ -212,7 +219,7 @@ namespace NoWinners
 
         public void TakeAction(DeskAction action)
         {
-            if (Live || Result != null || S.Acted != null) return;
+            if (Live || Result != null || S.Acted != null) { Sfx.Play("desk_denied"); return; }
             if (action == DeskAction.Shred) { Shredding = !Shredding; Refresh(); return; }
             int lost = S.LostCards;
             S.TakeAction(action);
@@ -246,6 +253,7 @@ namespace NoWinners
         public void PlayCard(int i)
         {
             if (CanPlay(i)) StartCoroutine(FeedReader(i));
+            else if (!Busy && i < S.Hand.Count && !Played.Contains(i)) Sfx.Play(Drawn && Result == null ? "rig_illegal" : "desk_denied"); // Off air the cards just won't move.
         }
 
         // Punch cards take real seconds, and they come off the on-air target.
