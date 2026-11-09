@@ -81,6 +81,7 @@ namespace NoWinners
         float offAt, lastDraw = -100, pressedAt = -100;
         string hover;
         public string HoverText => hover;
+        public int CalendarWeek { get; private set; } // The week tile pointed at in the calendar close-up, or 0.
         string runId, logPath;
         public static bool KeepLog = true;
 
@@ -212,6 +213,20 @@ namespace NoWinners
             : d == Special.Telethon ? $"PHONE: \"Telethon next week. Prize x{Config.TelethonPrize}, and x{Config.TelethonLive} bonus if you're on time.\""
             : d == Special.Nephew ? $"PHONE: \"Minister here. My nephew has {Numbers(nephews)}. Next week, one of those wins. +{Config.NephewReward} for you.\""
             : "";
+
+        // What a week on the calendar means, for the close-up's hover.
+        public string WeekInfo(int w)
+        {
+            var d = S.Dates[w];
+            string when = w < S.Week ? " (done)" : w == S.Week ? " (this week)" : "";
+            string what = Run.IsInspection(w) ? $"INSPECTION. You may play at most {Config.InspectionCards} card on air."
+                : d == Special.Payday ? $"PAYDAY. Tickets x{Config.PaydayTickets}, so cash x{Config.PaydayTickets}. The extra tickets stay on the board."
+                : d == Special.Telethon ? $"TELETHON. Prize x{Config.TelethonPrize}, and +{Config.Live * Config.TelethonLive} if you announce on time."
+                : d == Special.Nephew ? $"MINISTER'S NEPHEW. Land on one of his {Config.NephewNumbers} numbers for +{Config.NephewReward}. "
+                    + (S.Nephews.Count > 0 ? $"He has {Numbers(S.Nephews)}." : "The minister phones his numbers the week before.")
+                : "An ordinary week.";
+            return $"WEEK {w}{when}: {what}";
+        }
 
         public static string DateName(Special d) => d == Special.Payday ? "PAYDAY" : d == Special.Telethon ? "TELETHON" : d == Special.Nephew ? "NEPHEW" : "";
 
@@ -398,6 +413,7 @@ namespace NoWinners
                 if (Mode == Mode.Settings) CloseSettings();
                 else if (Mode == Mode.Paused) Resume();
                 else if (Mode == Mode.Play && Shredding) { Shredding = false; Refresh(); }
+                else if (Mode == Mode.Play && Station == "calendar") Look("monitor");
                 else Pause();
             }
             else if (keys != null && Mode == Mode.Start) { if (keys.anyKey.wasPressedThisFrame) SetMode(Mode.Title); }
@@ -405,10 +421,10 @@ namespace NoWinners
             else if (keys != null)
             {
                 if (keys.spaceKey.wasPressedThisFrame) lean = !lean;
-                int look = Station == "tv" ? 0 : Station == "monitor" ? 1 : 2;
+                int look = Station == "tv" ? 0 : Station == "machine" ? 2 : 1, was = look;
                 if (keys.aKey.wasPressedThisFrame || keys.leftArrowKey.wasPressedThisFrame) look = Mathf.Max(0, look - 1);
                 if (keys.dKey.wasPressedThisFrame || keys.rightArrowKey.wasPressedThisFrame) look = Mathf.Min(2, look + 1);
-                Look(look == 0 ? "tv" : look == 1 ? "monitor" : "machine");
+                if (look != was) Look(look == 0 ? "tv" : look == 1 ? "monitor" : "machine");
             }
             if (mouse == null) return;
             Vector2 at = mouse.position.ReadValue();
@@ -433,11 +449,19 @@ namespace NoWinners
             return col >= 0 && col < 10 && row >= 0 && row < 10 ? row * 10 + col : -1;
         }
 
+        int CalendarAt(Vector3 point)
+        {
+            var uv = Room.CalendarPaper.transform.InverseTransformPoint(point);
+            return Screens.CalendarWeekAt(Mathf.FloorToInt((uv.x + .5f) * 256), Mathf.FloorToInt((.5f - uv.y) * 320));
+        }
+
         void Hover(Vector2 at)
         {
             Collider c = null;
             var point = default(Vector3);
-            if ((Station == "monitor" || Station == "machine") && Result == null) c = Pick(at, out point);
+            if ((Station == "monitor" || Station == "machine" || Station == "calendar") && Result == null) c = Pick(at, out point);
+            int week = Station == "calendar" && c == Room.CalendarPaper ? CalendarAt(point) : 0;
+            if (week != CalendarWeek) { CalendarWeek = week; Refresh(); }
             int preview = Shredding ? SquareAt(c, point) : -1;
             hover = null;
             int over = c == null ? -1 : Array.FindIndex(Room.Cards, t => t.GetComponent<Collider>() == c);
@@ -446,6 +470,8 @@ namespace NoWinners
                     Room.Cards[i].position = new Vector3(Room.Cards[i].position.x, Room.CardBaseY + (i == over && CanPlay(i) ? .02f : 0), Room.CardZ);
             if (over >= 0 && CanPlay(over)) preview = Run.Apply(Value, S.Hand[over]).Value;
             if (preview != Preview) { Preview = preview; lastDraw = -100; }
+            if (week > 0) { hover = WeekInfo(week); return; }
+            if (c == Room.CalendarPaper && Station != "calendar" && !Shredding) { hover = "CALENDAR: click to read it up close."; return; }
             if (c == null || Live) return;
             if (c == Room.LiveSwitch) hover = "GO LIVE: the machine draws, and you rig the number on air.";
             else if (c == Room.ActionProps[DeskAction.Supplier]) hover = "SUPPLIER: +1 card, lost if your hand is full.";
@@ -460,9 +486,11 @@ namespace NoWinners
             if (Mode == Mode.Start) { SetMode(Mode.Title); return; }
             if (Mode != Mode.Play || EndCardUp) { ClickMenu(at); return; }
             if (Result != null) { Go(); return; }
+            if (Station == "calendar") { Look("monitor"); return; } // Any click puts it down.
             if (Station != "monitor" && Station != "machine") return;
             var c = Pick(at, out var point);
             if (c == null) return;
+            if (c == Room.CalendarPaper && !Shredding) { Look("calendar"); return; }
             if (Station == "machine") { foreach (var kv in Room.ActionProps) if (c == kv.Value) TakeAction(kv.Key); return; } // The side table.
             if (Shredding && SquareAt(c, point) >= 0) { ShredSquare(SquareAt(c, point)); return; }
             if (c == Room.GoButton) { Go(); return; }
@@ -498,12 +526,15 @@ namespace NoWinners
             bool menu = Mode == Mode.Title || Mode == Mode.Settings; // Menus live on the monitor, seen up close.
             string at = Mode == Mode.Start ? "tv" : menu ? "monitor" : Station;
             bool leaning = menu || (lean && at == "monitor" && Mode == Mode.Play);
-            Vector3 look = leaning ? LookLean : at == "tv" ? LookTv : at == "machine" ? LookMachine : LookMonitor;
-            camPos = Vector3.Lerp(camPos, leaning ? LeanEye : Eye, ease);
+            var paper = Room.CalendarPaper.transform.position; // Close-up: square on, near enough to fill the view.
+            bool calendar = at == "calendar";
+            Vector3 look = leaning ? LookLean : at == "tv" ? LookTv : at == "machine" ? LookMachine : calendar ? paper : LookMonitor;
+            camPos = Vector3.Lerp(camPos, leaning ? LeanEye : calendar ? paper + new Vector3(0, 0, -.68f) : Eye, ease);
             camLook = Vector3.Lerp(camLook, look, ease);
             cam.fieldOfView = Mathf.Lerp(cam.fieldOfView, at == "tv" ? 26 : 50, ease);
-            cam.transform.position = camPos + new Vector3(pointer.x * .03f, pointer.y * .015f, 0);
-            cam.transform.LookAt(camLook + new Vector3(pointer.x * .05f, pointer.y * .03f, 0));
+            var sway = calendar ? Vector2.zero : pointer; // The close-up holds still, so the week under the pointer stays put.
+            cam.transform.position = camPos + new Vector3(sway.x * .03f, sway.y * .015f, 0);
+            cam.transform.LookAt(camLook + new Vector3(sway.x * .05f, sway.y * .03f, 0));
         }
 
         string Hint()
@@ -511,6 +542,7 @@ namespace NoWinners
             if (Result != null) return $"{Notice} {(S.Over != Ending.None ? "" : !Result.Revealed ? "Click to see the board." : "Click anywhere for next week.")}".Trim();
             if (Shredding) return "Click a square on the monitor to shred it. Esc to cancel.";
             if (hover != null) return hover;
+            if (Station == "calendar") return "THE CALENDAR: point at a week to see what it means. Click or Esc to put it down.";
             if (Notice.Length > 0) return Notice;
             return Live ? "On air: rig the number with your cards, then press the red button." : "Off air, no clock. Look right for one desk action if you want, then flip GO LIVE.";
         }

@@ -72,6 +72,7 @@ namespace NoWinners
         {
             if (game.Busy) return Kind.Arrow;
             if (game.Result != null) return Kind.Hand; // Any click moves the result on.
+            if (game.Station == "calendar") return Kind.Hand; // Any click puts it down.
             if (game.Station != "monitor" && game.Station != "machine") return Kind.Arrow;
             if (!Physics.Raycast(Camera.main.ScreenPointToRay(at), out var hit, 10)) return Kind.Arrow;
             var c = hit.collider;
@@ -108,6 +109,7 @@ namespace NoWinners
             if (c == r.GoButton) { ok = game.Drawn; name = ok ? $"ANNOUNCE {game.Value:00}" : offAir ? "RED BUTTON: GO LIVE FIRST" : "RED BUTTON: WAIT FOR THE DRAW"; return true; }
             if (c == r.UndoButton) { ok = game.Played.Count > 0; name = ok ? "EJECT LAST CARD" : "EJECT: NO CARD IN"; return true; }
             if (c == r.LiveSwitch) { ok = offAir; name = ok ? "GO LIVE" : "GO LIVE: ALREADY ON AIR"; return true; }
+            if (c == r.CalendarPaper) { ok = !game.Shredding; name = ok ? "CALENDAR" : "CALENDAR: SHREDDING"; return true; }
             foreach (var kv in r.ActionProps)
             {
                 if (c != kv.Value) continue;

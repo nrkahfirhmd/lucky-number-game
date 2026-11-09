@@ -230,5 +230,50 @@ namespace NoWinners.Tests
             InputSystem.RemoveDevice(mouse);
             InputSystem.RemoveDevice(keys);
         }
+
+        // The calendar: click it for a close-up, point at a week to read what it means, Esc to put it down.
+        [UnityTest]
+        public IEnumerator Calendar_close_up_explains_weeks()
+        {
+            Game.KeepLog = false;
+            yield return SceneManager.LoadSceneAsync("Desk");
+            yield return null;
+            game = Object.FindAnyObjectByType<Game>();
+            cam = Camera.main;
+            game.Begin();
+            yield return Settle();
+
+            InputSystem.settings.backgroundBehavior = InputSettings.BackgroundBehavior.IgnoreFocus;
+            InputSystem.settings.editorInputBehaviorInPlayMode = InputSettings.EditorInputBehaviorInPlayMode.AllDeviceInputAlwaysGoesToGameView;
+            var mouse = InputSystem.AddDevice<Mouse>();
+            var keys = InputSystem.AddDevice<Keyboard>();
+            IEnumerator Mouse(Vector2 at, bool down) { InputSystem.QueueStateEvent(mouse, new MouseState { position = at, buttons = (ushort)(down ? 1 : 0) }); yield return null; yield return null; }
+            Vector2 Tile(int w) => cam.WorldToScreenPoint(game.Room.CalendarPaper.transform.TransformPoint(new Vector3(
+                (Screens.CalX + (w - 1) % 4 * Screens.CalStepX + Screens.CalW / 2) / 256f - .5f, .5f - (Screens.CalY + (w - 1) / 4 * Screens.CalStepY + Screens.CalH / 2) / 320f, 0)));
+
+            Vector2 paper = cam.WorldToScreenPoint(game.Room.CalendarPaper.bounds.center);
+            yield return Mouse(paper, false);
+            Assert.AreEqual((Pointer.Kind.Hand, "CALENDAR"), (Pointer.Current, Pointer.Label), "the calendar is clickable from the chair");
+            yield return Mouse(paper, true);
+            yield return Mouse(paper, false);
+            Assert.AreEqual("calendar", game.Station);
+            yield return Settle();
+
+            yield return Mouse(Tile(4), false);
+            Assert.AreEqual(4, game.CalendarWeek);
+            StringAssert.Contains("INSPECTION", game.HoverText);
+            int date = System.Array.IndexOf(game.S.Dates, Special.Nephew);
+            yield return Mouse(Tile(date), false);
+            Assert.AreEqual(date, game.CalendarWeek);
+            StringAssert.Contains("NEPHEW", game.HoverText);
+            yield return new WaitForSeconds(.2f);
+            Shot(cam, "c-calendar");
+
+            InputSystem.QueueStateEvent(keys, new KeyboardState(Key.Escape));
+            yield return null; yield return null;
+            Assert.AreEqual(("monitor", Mode.Play), (game.Station, game.Mode), "Esc puts the calendar down, it doesn't pause");
+            InputSystem.RemoveDevice(mouse);
+            InputSystem.RemoveDevice(keys);
+        }
     }
 }

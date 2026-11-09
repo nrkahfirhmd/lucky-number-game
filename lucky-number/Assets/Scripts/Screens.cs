@@ -568,6 +568,15 @@ namespace NoWinners
             Plate(Room.UndoPlate, "EJECT", on);
         }
 
+        // Calendar tiles on the 256x320 paper. Game.CalendarAt hit-tests the same layout.
+        public const int CalX = 8, CalY = 48, CalW = 57, CalH = 82, CalStepX = 61, CalStepY = 88;
+        public static int CalendarWeekAt(int px, int py)
+        {
+            int col = (px - CalX) / CalStepX, row = (py - CalY) / CalStepY;
+            if (px < CalX || py < CalY || col > 3 || row > 2 || (px - CalX) % CalStepX >= CalW || (py - CalY) % CalStepY >= CalH) return 0;
+            return row * 4 + col + 1;
+        }
+
         void DrawCalendar()
         {
             var c = Room.Calendar;
@@ -576,17 +585,16 @@ namespace NoWinners
             c.Centred("THE CALENDAR", 12, H("#F2F2E6"), 2);
             for (int w = 1; w <= Config.Weeks; w++)
             {
-                int x = 8 + (w - 1) % 4 * 61, y = 48 + (w - 1) / 4 * 80;
+                int x = CalX + (w - 1) % 4 * CalStepX, y = CalY + (w - 1) / 4 * CalStepY;
                 bool insp = Run.IsInspection(w);
                 var date = S.Dates[w];
-                c.Rect(x, y, 57, 74, H(insp ? "#B3241C" : date != Special.None ? "#E0A82E" : "#D0C8AE"));
-                c.Centred($"{w}{(insp ? "!" : "")}", y + 20, H(insp ? "#F2F2E6" : "#1C1E28"), 2, 3, x + 28);
-                if (date != Special.None) c.Centred(date == Special.Payday ? "PAY" : date == Special.Telethon ? "TELE" : "NEPH", y + 50, H("#1C1E28"), 1, 1, x + 28);
-                if (w < S.Week) c.Rect(x + 4, y + 64, 49, 4, H("#1C1E28"));
-                if (w == S.Week) c.Frame(x + 2, y + 2, 53, 70, H("#1A2AA8"), 4);
+                c.Rect(x, y, CalW, CalH, H(insp ? "#B3241C" : date != Special.None ? "#E0A82E" : "#D0C8AE"));
+                c.Centred($"{w}{(insp ? "!" : "")}", y + 24, H(insp ? "#F2F2E6" : "#1C1E28"), 2, 3, x + 28);
+                if (date != Special.None) c.Centred(date == Special.Payday ? "PAY" : date == Special.Telethon ? "TELE" : "NEPH", y + 56, H("#1C1E28"), 1, 1, x + 28);
+                if (w == game.CalendarWeek) c.Frame(x, y, CalW, CalH, H("#FFD23A"), 3); // Pointed at, in the close-up.
+                if (w < S.Week) c.Rect(x + 4, y + CalH - 10, CalW - 8, 4, H("#1C1E28"));
+                if (w == S.Week) c.Frame(x + 2, y + 2, CalW - 4, CalH - 4, H("#1A2AA8"), 4);
             }
-            c.Centred("RED: ONE CARD ONLY", 290, H("#1C1E28"));
-            c.Centred("GOLD: SPECIAL DATE", 304, H("#1C1E28"));
             c.Apply();
         }
 

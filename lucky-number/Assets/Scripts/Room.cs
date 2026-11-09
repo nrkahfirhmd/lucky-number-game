@@ -20,7 +20,7 @@ namespace NoWinners
         public readonly Canvas8[] CardFaces = new Canvas8[CardCount];
         public readonly Transform[] Cards = new Transform[CardCount];
         public readonly Transform[] Balls = new Transform[14];
-        public readonly Collider MonitorScreen, GoButton, UndoButton, LiveSwitch;
+        public readonly Collider MonitorScreen, GoButton, UndoButton, LiveSwitch, CalendarPaper;
         public readonly Dictionary<DeskAction, Collider> ActionProps = new Dictionary<DeskAction, Collider>();
         public readonly Transform Lever, GoCap;
 
@@ -133,6 +133,9 @@ namespace NoWinners
             GoButton = Hit("GoButton", new Vector3(.6f, .8f, 2.72f), new Vector3(.2f, .06f, .2f));
             UndoButton = Hit("UndoButton", new Vector3(-.53f, .79f, 2.72f), new Vector3(.14f, .04f, .1f));
             LiveSwitch = Hit("LiveSwitch", new Vector3(.55f, .82f, 2.97f), new Vector3(.14f, .12f, .1f));
+            // The calendar paper, 0.42 x 0.525 (wallPaper in build.mjs), as a unit box like the monitor so tiles map in local space.
+            var cal = art.Find("calendar").GetComponentInChildren<Renderer>().bounds;
+            CalendarPaper = Hit("CalendarPaper", new Vector3(cal.center.x, cal.min.y + .2625f, cal.min.z), new Vector3(.42f, .525f, .01f));
             // Desk actions sit on the side table, seen when you look right at the machine.
             ActionProps[DeskAction.Supplier] = Hit("Phone", new Vector3(1.75f, .85f, 1.9f), new Vector3(.17f, .1f, .22f));
             ActionProps[DeskAction.Bribe] = Hit("Envelope", new Vector3(1.75f, .815f, 2.17f), new Vector3(.12f, .03f, .19f));

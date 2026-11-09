@@ -152,6 +152,7 @@ namespace NoWinners
             if (game.Preview != preview && game.Preview >= 0) Play("ui_hover", game.Shredding ? .5f : .8f);
             int now = StationIndex(game.Station), was = StationIndex(station);
             if (station != null && now != was) Play(now < was ? "room_look_left" : "room_look_right");
+            if (game.Station == "calendar" && station != "calendar") Play("desk_calendar_flip");
 
             // Desk actions.
             if (s.Acted != acted && s.Acted != null)
