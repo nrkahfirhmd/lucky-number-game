@@ -105,7 +105,7 @@ namespace NoWinners
             Chain(g, Tokens(cards, steps), 184, Ink, Label);
             int h = S.Board[now], cost = S.CostOf(now, cards.Count);
             if (S.IsFavour(now)) Verdict(g, cost <= 0 ? $"NEPHEW +{-cost}" : $"NEPHEW -{cost}", cost <= 0 ? Good : Label);
-            else if (h == 0) Verdict(g, "NOBODY HOLDS", Good);
+            else if (h == 0) Verdict(g, "0 PERSON HOLDS", Good);
             else Verdict(g, $"{h} HOLD -{cost}", Alarm);
         }
 
