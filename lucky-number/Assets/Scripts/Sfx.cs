@@ -147,14 +147,12 @@ namespace NoWinners
                 if (Run.IsInspection(s.Week)) Later(.9f, "desk_inspection_stamp");
             }
 
-            // Pointer and camera.
             if (game.HoverText != hover && game.HoverText != null) Play("ui_hover", .8f);
             if (game.Preview != preview && game.Preview >= 0) Play("ui_hover", game.Shredding ? .5f : .8f);
-            int now = StationIndex(game.Station), was = StationIndex(station);
+            int now = Game.StationIndex(game.Station), was = Game.StationIndex(station);
             if (station != null && now != was) Play(now < was ? "room_look_left" : "room_look_right");
             if (game.Station == "calendar" && station != "calendar") Play("desk_calendar_flip");
 
-            // Desk actions.
             if (s.Acted != acted && s.Acted != null)
             {
                 if (s.Acted == DeskAction.Supplier) { Play("desk_supplier_phone"); if (s.LostCards > lost) Later(2.2f, "desk_card_lost"); }
@@ -163,7 +161,6 @@ namespace NoWinners
             }
             else if (game.Shredding != shredding) Play(game.Shredding ? "ui_menu_confirm" : "ui_menu_back");
 
-            // Going live, the roll and the lock.
             if (game.Live && !live)
             {
                 Play("live_switch");
@@ -181,13 +178,11 @@ namespace NoWinners
             }
             if (game.Drawn && !drawn) { Play("machine_lock"); machine.volume = .3f; }
 
-            // Rigging.
             if (game.Busy && !busy) Play("rig_card_feed");
             if (game.Result == null && game.Played.Count > played) Play("rig_number_snap");
             if (game.Result == null && game.Played.Count < played) Play("rig_undo");
             Clock();
 
-            // Announce and the broadcast.
             if (game.Result != null && result != game.Result) Announce();
             if (game.Result != null && game.Result.Revealed && !revealed && game.Result.Air.Pay > 0)
             {
@@ -231,8 +226,6 @@ namespace NoWinners
                 Later(still ? 1.5f : 2.4f, "end_stand_by_tone");
             }
         }
-
-        static int StationIndex(string s) => s == "tv" ? 0 : s == "machine" ? 2 : 1;
 
         void Remember()
         {

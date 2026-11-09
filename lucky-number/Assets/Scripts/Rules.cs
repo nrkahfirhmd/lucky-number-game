@@ -39,32 +39,97 @@ namespace NoWinners
 
     public readonly struct Card
     {
-        // + - * / are arithmetic. The rest are special cards (v2 section 5):
-        // S SWAP, M MIRROR, T SHIFT (X = +-10/20), W TWIN, R WRAP (X = N), J JAM, D REDRAW.
         public readonly char Op;
         public readonly int X;
         public Card(char op, int x = 0) { Op = op; X = x; }
         public bool IsSpecial => "+-*/".IndexOf(Op) < 0;
-        public bool IsRandom => Op == 'J' || Op == 'D'; // Results unknown until played.
-        public string Name => Op == 'S' ? "SWAP" : Op == 'M' ? "MIRROR" : Op == 'T' ? "SHIFT" : Op == 'W' ? "TWIN" : Op == 'R' ? "WRAP" : Op == 'J' ? "JAM" : Op == 'D' ? "REDRAW" : "";
-        public string Arg => Op == 'T' ? (X > 0 ? "+" : "") + X : Op == 'R' ? "+" + X : "";
-        public override string ToString() => IsSpecial ? Name + Arg : (Op == '*' ? "×" : Op == '/' ? "÷" : Op.ToString()) + X;
+        public bool IsRandom => Op == 'J' || Op == 'D';
+        public string Name => Op switch
+        {
+            'S' => "SWAP",
+            'M' => "MIRROR",
+            'T' => "SHIFT",
+            'W' => "TWIN",
+            'R' => "WRAP",
+            'J' => "JAM",
+            'D' => "REDRAW",
+            _ => ""
+        };
+        public string Arg => Op switch
+        {
+            'T' => (X > 0 ? "+" : "") + X,
+            'R' => "+" + X,
+            _ => ""
+        };
+        public override string ToString() => IsSpecial ? Name + Arg : (Op switch { '*' => "×", '/' => "÷", _ => Op.ToString() }) + X;
     }
 
-    // What each printer slip asks, pays and costs. Untuned: the draft's starting guesses.
     public static class Slips
     {
-        public static string Name(Slip s) => s == Slip.Sponsor ? "SPONSOR" : s == Slip.Quiet ? "QUIET WEEK" : s == Slip.Rush ? "RUSH JOB"
-            : s == Slip.Favour ? "FAVOUR" : s == Slip.Bulk ? "BULK ORDER" : s == Slip.Collector ? "COLLECTOR" : "";
-        public static string Quote(Slip s) => s == Slip.Sponsor ? "Lucky 7 night." : s == Slip.Quiet ? "Inspector in the building." : s == Slip.Rush ? "Network wants it fast."
-            : s == Slip.Favour ? "Let a few win." : s == Slip.Bulk ? $"{Config.BulkTickets} tickets on the {Config.BulkFrom}s." : s == Slip.Collector ? "Wants a clean show." : "";
-        public static string Wants(Slip s) => s == Slip.Sponsor ? "FINAL NUMBER ENDS IN 7" : s == Slip.Quiet ? "PLAY AT MOST 1 CARD" : s == Slip.Rush ? $"ANNOUNCE WITHIN {Config.RushSeconds} S"
-            : s == Slip.Favour ? $"A SMALL WINNER (1-{Config.SmallMax})" : s == Slip.Bulk ? "NOTHING: PAID NOW" : s == Slip.Collector ? "A CLEAN DRAW" : "";
-        public static int Reward(Slip s) => s == Slip.Sponsor ? 120 : s == Slip.Quiet ? 100 : s == Slip.Rush ? 80 : s == Slip.Favour ? 150 : s == Slip.Bulk ? 30 : 0;
-        public static string Pays(Slip s) => s == Slip.Collector ? "1 SPECIAL CARD" : s == Slip.Bulk ? $"+{Reward(s)} NOW" : $"+{Reward(s)}";
-        public static int Fine(Slip s) => s == Slip.Sponsor ? 60 : s == Slip.Favour ? 50 : 0; // Cash. The rest raise the prize.
-        public static string Fails(Slip s) => s == Slip.Sponsor ? $"-{Fine(s)} CASH" : s == Slip.Favour ? $"-{Fine(s)} IF CLEAN"
-            : s == Slip.Bulk ? $"{Config.BulkTickets} EXTRA TICKETS ON {Config.BulkFrom}-{Config.BulkFrom + 9}" : $"PRIZE +{Config.Rollover}";
+        public static string Name(Slip s) => s switch
+        {
+            Slip.Sponsor => "SPONSOR",
+            Slip.Quiet => "QUIET WEEK",
+            Slip.Rush => "RUSH JOB",
+            Slip.Favour => "FAVOUR",
+            Slip.Bulk => "BULK ORDER",
+            Slip.Collector => "COLLECTOR",
+            _ => ""
+        };
+
+        public static string Quote(Slip s) => s switch
+        {
+            Slip.Sponsor => "Lucky 7 night.",
+            Slip.Quiet => "Inspector in the building.",
+            Slip.Rush => "Network wants it fast.",
+            Slip.Favour => "Let a few win.",
+            Slip.Bulk => $"{Config.BulkTickets} tickets on the {Config.BulkFrom}s.",
+            Slip.Collector => "Wants a clean show.",
+            _ => ""
+        };
+
+        public static string Wants(Slip s) => s switch
+        {
+            Slip.Sponsor => "FINAL NUMBER ENDS IN 7",
+            Slip.Quiet => "PLAY AT MOST 1 CARD",
+            Slip.Rush => $"ANNOUNCE WITHIN {Config.RushSeconds} S",
+            Slip.Favour => $"A SMALL WINNER (1-{Config.SmallMax})",
+            Slip.Bulk => "NOTHING: PAID NOW",
+            Slip.Collector => "A CLEAN DRAW",
+            _ => ""
+        };
+
+        public static int Reward(Slip s) => s switch
+        {
+            Slip.Sponsor => 120,
+            Slip.Quiet => 100,
+            Slip.Rush => 80,
+            Slip.Favour => 150,
+            Slip.Bulk => 30,
+            _ => 0
+        };
+
+        public static string Pays(Slip s) => s switch
+        {
+            Slip.Collector => "1 SPECIAL CARD",
+            Slip.Bulk => $"+{Reward(s)} NOW",
+            _ => $"+{Reward(s)}"
+        };
+
+        public static int Fine(Slip s) => s switch
+        {
+            Slip.Sponsor => 60,
+            Slip.Favour => 50,
+            _ => 0
+        };
+
+        public static string Fails(Slip s) => s switch
+        {
+            Slip.Sponsor => $"-{Fine(s)} CASH",
+            Slip.Favour => $"-{Fine(s)} IF CLEAN",
+            Slip.Bulk => $"{Config.BulkTickets} EXTRA TICKETS ON {Config.BulkFrom}-{Config.BulkFrom + 9}",
+            _ => $"PRIZE +{Config.Rollover}"
+        };
     }
 
     public class Route
@@ -148,9 +213,19 @@ namespace NoWinners
         {
             int tens = v / 10, units = v % 10;
             if (c.IsRandom || (c.Op == '/' && v % c.X != 0) || ((c.Op == 'S' || c.Op == 'W') && tens == units)) return null;
-            int r = c.Op == '+' ? v + c.X : c.Op == '-' ? v - c.X : c.Op == '*' ? v * c.X : c.Op == '/' ? v / c.X
-                : c.Op == 'S' ? units * 10 + tens : c.Op == 'M' ? 99 - v : c.Op == 'T' ? v + c.X : c.Op == 'W' ? tens * 11 : (v + c.X) % 100;
-            return r >= 0 && r <= 99 ? r : (int?)null;
+            int r = c.Op switch
+            {
+                '+' => v + c.X,
+                '-' => v - c.X,
+                '*' => v * c.X,
+                '/' => v / c.X,
+                'S' => units * 10 + tens,
+                'M' => 99 - v,
+                'T' => v + c.X,
+                'W' => tens * 11,
+                _ => (v + c.X) % 100
+            };
+            return r is >= 0 and <= 99 ? r : null;
         }
 
         public static bool CanApply(int v, Card c) => c.IsRandom || Apply(v, c) != null;
@@ -228,28 +303,30 @@ namespace NoWinners
             else LostCards++;
         }
 
+        static readonly Slip[] AvailableSlips = { Slip.Sponsor, Slip.Quiet, Slip.Rush, Slip.Favour, Slip.Bulk, Slip.Collector };
+
         public void StartWeek()
         {
             Week++;
             Sold = (Config.Tickets1 + Config.TicketsGrowth * (Week - 1)) * (Today == Special.Payday ? Config.PaydayTickets : 1);
             Cash += Sold * Config.TicketPrice;
             AddTickets(Sold);
-            if (Next == Special.Nephew) // The call comes a week early, so off air has something to plan for.
+            if (Next == Special.Nephew)
             {
                 var empty = Enumerable.Range(0, 100).Where(n => Board[n] == 0).OrderBy(_ => rng.Next()).ToList();
                 if (empty.Count < Config.NephewNumbers) empty.AddRange(Enumerable.Range(0, 100).Except(empty).OrderBy(_ => rng.Next()));
                 Nephews.Clear();
                 Nephews.AddRange(empty.Take(Config.NephewNumbers).OrderBy(n => n));
             }
-            if (Today == Special.Nephew) foreach (int n in Nephews) Board[n]++; // His own tickets.
+            if (Today == Special.Nephew) foreach (int n in Nephews) Board[n]++;
             LostCards = 0;
             Acted = null;
             Roll = null;
             Pinned = Slip.None;
             Offer = Slip.None;
-            if (Week >= Config.SlipFrom && !IsInspection(Week)) // Never a slip that clashes with the date.
+            if (Week >= Config.SlipFrom && !IsInspection(Week))
             {
-                var slips = ((Slip[])Enum.GetValues(typeof(Slip))).Where(k => k != Slip.None && !(k == Slip.Favour && Today == Special.Nephew)).ToArray();
+                var slips = AvailableSlips.Where(k => !(k == Slip.Favour && Today == Special.Nephew)).ToArray();
                 Offer = slips[rng.Next(slips.Length)];
             }
             for (int i = 0, d = Week == 1 ? Config.StartHand : Config.Draw; i < d; i++) Deal();
@@ -336,8 +413,14 @@ namespace NoWinners
         {
             var s = a.Slip;
             if (s == Slip.None || s == Slip.Bulk) { a.SlipMet = s == Slip.Bulk; return; }
-            a.SlipMet = s == Slip.Sponsor ? number % 10 == 7 : s == Slip.Quiet ? cards <= 1 : s == Slip.Rush ? seconds <= Config.RushSeconds
-                : s == Slip.Favour ? a.Tier == Tier.Small : a.Tier == Tier.Clean;
+            a.SlipMet = s switch
+            {
+                Slip.Sponsor => number % 10 == 7,
+                Slip.Quiet => cards <= 1,
+                Slip.Rush => seconds <= Config.RushSeconds,
+                Slip.Favour => a.Tier == Tier.Small,
+                _ => a.Tier == Tier.Clean
+            };
             if (a.SlipMet) { a.SlipCash = Slips.Reward(s); if (s == Slip.Collector) Gift(a); }
             else if (s == Slip.Sponsor || (s == Slip.Favour && a.Tier == Tier.Clean)) a.SlipCash = -Slips.Fine(s);
             else if (s != Slip.Favour) Bribes++; // Prize +40 for the rest of the run, like a bribe.

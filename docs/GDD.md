@@ -340,7 +340,7 @@ Use no real lottery brands, logos or show names. "The Big Draw" and "No Winners"
 
 ### Onboarding
 
-A memo on the desk gives the job in two lines. There is no tutorial screen. On a first run, the first week's roll and hand are seeded so one card reaches a free square. Rollover is explained by the host at the first clean draw, inspections by a phone call the week before the first one, and desk actions by a note on the desk in week 2.
+A memo on the desk gives the job in two lines. There is no tutorial screen. On the first run ever, a one-line coach at the top of the screen walks week 1: side table, rack, GO LIVE, playing a card, announcing, the reveal. Each line clears when the player does the thing, TAB skips it, and it doesn't come back unless TUTORIAL is turned on again in settings (`tutorialDone` in PlayerPrefs). On a first run, the first week's roll and hand are seeded so one card reaches a free square. Rollover is explained by the host at the first clean draw, inspections by a phone call the week before the first one, and desk actions by a note on the desk in week 2.
 
 ### Accessibility
 
@@ -484,6 +484,7 @@ Still open:
 | [no-winners-spatial-notes.md](no-winners-spatial-notes.md) | Why first person |
 | [desk.html](../prototypes/desk.html) | Playable first-person POC. Repair plays **this document's** rules, and Build keeps its parked rules. |
 | [no-winners-offair-draft.md](no-winners-offair-draft.md) | Draft: in-tray off-air loop and special dates, not decided |
+| [no-winners-offair-v2-draft.md](no-winners-offair-v2-draft.md) | Draft: printer, costed desk actions, harder tuning and special cards with re-punching. Not built |
 | [no-winners-redesign-proposal.md](no-winners-redesign-proposal.md) | Rig-the-balls alternative, not adopted. Its prototype was deleted. |
 | [repair.html](../prototypes/repair.html), [build.html](../prototypes/build.html), [spatial-poc.html](../prototypes/spatial-poc.html), [art-frame.html](../prototypes/art-frame.html) | Flat versions and look-dev, with the old rules |
 | [check.js](../prototypes/check.js) | Rule checks and bots for the **old** rules, plus checks for this document's rules as `desk.html` plays them |

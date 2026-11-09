@@ -98,4 +98,6 @@ Hand-size figures come from a quick random-hand simulation; the bot figures come
 
 ## Next step
 
+**2026-11-09:** a newer direction replaces the in-tray with a printer, keeps the three desk actions with real costs, and adds special cards. See [no-winners-offair-v2-draft.md](no-winners-offair-v2-draft.md).
+
 Once the Unity core loop runs, try the in-tray there, and judge it by playing it. Bots can't tell us whether it feels like gameplay. Update the GDD only after that.

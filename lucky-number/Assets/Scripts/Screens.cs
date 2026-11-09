@@ -19,8 +19,15 @@ namespace NoWinners
             new[] { H("#FF8A1F"), H("#23093A"), H("#5C1F00") }, new[] { H("#F5D23C"), H("#23093A"), H("#5A4800") },
         };
         static readonly Color32[] Bars = { H("#FFC93C"), H("#FF3D6E"), H("#5CF2C8"), H("#C2187A"), H("#7A3AA0"), H("#FF8A1F"), H("#FFF3D6") };
-        const string TickerOn = "   TICKET SALES UP AGAIN   *   NUMBER 77 STILL DUE, SAY EXPERTS   *",
-            TickerTitle = "   TONIGHT ON THE BIG DRAW   *   COULD IT BE YOU?   *   NO   *",
+        static readonly string[] OnAirTickers =
+        {
+            "   TICKET SALES UP AGAIN   *   NUMBER 77 STILL DUE, SAY EXPERTS   *",
+            "   RECORD TICKET SALES   *   MATH EXPERTS DECLARE DRAW \"UNWINNABLE\"   *",
+            "   FEVER IN THE STREETS   *   STATION PROMISES \"SOMEONE MUST WIN EVENTUALLY\"   *",
+            "   CITIZENS DEMAND WINNER   *   LOTTERY COMMITTEE URGES PATIENCE   *",
+            "   LUCKY CHARMS SELL OUT   *   EXPERTS RECOMMEND BUYING MORE TICKETS   *"
+        };
+        const string TickerTitle = "   TONIGHT ON THE BIG DRAW   *   COULD IT BE YOU?   *   NO   *",
             TickerWon = "   THAT WAS THE SEASON   *   SEE YOU IN THE SPRING   *",
             TickerTelethon = "   TELETHON NIGHT   *   PRIZE DOUBLED   *   GIVE GENEROUSLY   *   TO US   *";
         static readonly string[] Winners = { "NO WINNERS", "ONE WINNER", "TWO WINNERS", "THREE WINNERS" };
@@ -58,7 +65,6 @@ namespace NoWinners
             DrawPaper();
         }
 
-        // ---- Monitor: the show's board and number. No player stats. ----
         void DrawMonitor(float t)
         {
             var g = Room.Monitor;
@@ -231,6 +237,8 @@ namespace NoWinners
             Slider(g, 44, Prefs.Volume);
             SetRow(g, 108, "REDUCE MOTION", game.Sel == 1);
             Seg(g, 364, 132, 72, new[] { "OFF", "ON" }, Prefs.ReduceMotion ? 1 : 0);
+            SetRow(g, 172, "TUTORIAL", game.Sel == 2);
+            Seg(g, 364, 196, 72, new[] { "OFF", "ON" }, Prefs.Tutorial ? 1 : 0);
             MonButton(g, 352, Game.BackY, 272, "BACK", game.Sel == Game.SettingRows);
         }
 
@@ -259,7 +267,6 @@ namespace NoWinners
             }
         }
 
-        // ---- TV: pure show ----
         void DrawTv(float t)
         {
             var g = Room.Tv;
@@ -316,7 +323,7 @@ namespace NoWinners
         static void TitleCard(Canvas8 g, float t)
         {
             Stage(g, t, TickerTitle, live: false, header: false);
-            g.Centred("NO WINNERS", 96, Label, 4, 6);
+            g.Centred("DON'T LET ANYONE WIN", 96, Label, 3, 5);
             g.Centred("THE LOTTERY NOBODY WINS", 160, Ink, 1, 2);
             if (Still || (int)(t / 500) % 2 == 0) g.Centred("PRESS ANY KEY", 216, Ink, 2, 2);
         }
@@ -325,7 +332,7 @@ namespace NoWinners
         void Live(Canvas8 g, float t)
         {
             bool stalling = game.Stall >= 0;
-            Stage(g, t, S.Today == Special.Telethon ? TickerTelethon : TickerOn);
+            Stage(g, t, S.Today == Special.Telethon ? TickerTelethon : OnAirTickers[(S.Week - 1) % OnAirTickers.Length]);
             Ball(g, "??", stalling ? Dim : Ink);
             if (stalling)
             {
@@ -339,21 +346,37 @@ namespace NoWinners
         {
             var a = Result.Air;
             string n = $"{Result.Number:00}";
-            string ticker = a.Reward > 0 ? $"   MINISTER'S NEPHEW WINS ON {n}   *   MINISTER \"AS SURPRISED AS ANYONE\"   *"
-                : a.Tier == Tier.Clean ? "   NO WINNER AGAIN THIS WEEK   *   STATION SENDS ITS SYMPATHY   *"
-                : a.Tier == Tier.Small ? $"   {(a.Holders < Winners.Length ? Winners[a.Holders] : $"{a.Holders} WINNERS")} ON {n}   *   STATION \"DELIGHTED FOR THEM\"   *"
-                : $"   {n} FINALLY COMES IN   *   BOARD CALLS EMERGENCY MEETING   *";
+            string ticker = a.Reward > 0
+                ? $"   MINISTER'S NEPHEW WINS ON {n}   *   MINISTER \"AS SURPRISED AS ANYONE\"   *"
+                : a.Tier switch
+                {
+                    Tier.Clean => "   NO WINNER AGAIN THIS WEEK   *   STATION SENDS ITS SYMPATHY   *",
+                    Tier.Small => $"   {(a.Holders < Winners.Length ? Winners[a.Holders] : $"{a.Holders} WINNERS")} ON {n}   *   STATION \"DELIGHTED FOR THEM\"   *",
+                    _ => $"   {n} FINALLY COMES IN   *   BOARD CALLS EMERGENCY MEETING   *"
+                };
             Stage(g, t, ticker);
             Ball(g, n, Ink);
-            g.Centred(a.Holders == 0 ? "NOBODY WON!" : a.Holders == 1 ? "1 WINNER!" : $"{a.Holders} WINNERS!", 196, a.Tier == Tier.Scandal ? Alarm : Label, 2, 2);
-            g.Centred(a.Reward > 0 ? "WHAT ARE THE ODDS." : a.Tier == Tier.Clean ? "WHAT A SHAME!" : a.Tier == Tier.Small ? "LUCKY THEM." : "THE STATION IS THRILLED. REALLY.", 228, Ink);
+            string countLabel = a.Holders switch
+            {
+                0 => "NOBODY WON!",
+                1 => "1 WINNER!",
+                _ => $"{a.Holders} WINNERS!"
+            };
+            g.Centred(countLabel, 196, a.Tier == Tier.Scandal ? Alarm : Label, 2, 2);
+            string subtext = a.Reward > 0 ? "WHAT ARE THE ODDS." : a.Tier switch
+            {
+                Tier.Clean => "WHAT A SHAME!",
+                Tier.Small => "LUCKY THEM.",
+                _ => "THE STATION IS THRILLED. REALLY."
+            };
+            g.Centred(subtext, 228, Ink);
         }
 
         static void SeasonOver(Canvas8 g, float t)
         {
             Stage(g, t, TickerWon);
-            g.Centred($"{Config.Weeks} WEEKS.", 128, Ink, 2, 3);
-            g.Centred("NOBODY WON.", 168, Label, 2, 3);
+            g.Centred("STATION UNDER INVESTIGATION.", 128, Ink, 2, 3);
+            g.Centred("AWAIT FURTHER NOTICE.", 168, Label, 2, 3);
         }
 
         static void StandBy(Canvas8 g)
@@ -378,12 +401,11 @@ namespace NoWinners
             else if (p >= 2400) StandBy(g);
         }
 
-        // ---- HUD: the player's own numbers, flat over the game window. No CRT. ----
         public readonly Canvas8 Hud = new Canvas8(640, 360);
         static readonly Color32 HInk = H("#F2F2E6"), HDim = H("#8A8A90"), HGold = H("#FFD23A"), HRed = H("#FF3B2F"), HPlate = H("#111111"), HLine = H("#4A4A50"),
             Clear = new Color32(0, 0, 0, 0);
 
-        void DrawHud()
+        public void DrawHud()
         {
             var g = Hud;
             g.Fill(Clear);
@@ -391,6 +413,7 @@ namespace NoWinners
             else if (game.Mode == Mode.Play)
             {
                 Bar(g);
+                if (!game.EndCardUp) Coach(g);
                 if (Result == null) Banner(g);
                 if (Result != null && S.Over != Ending.None && game.EndCardUp) EndCard(g);
             }
@@ -417,13 +440,18 @@ namespace NoWinners
             if (Result != null) return;
             if (inspection)
             {
-                g.Chip(16, 32, 160, 24, HRed);
-                g.Text($"INSPECTION: {Config.InspectionCards} CARD", 24, 36, HPlate, 1, 2);
+                string badge = $"INSPECTION: {Config.InspectionCards} CARD ONLY";
+                g.Chip(16, 32, badge.Length * 8 + 16, 24, HRed);
+                g.Text(badge, 24, 36, HPlate, 1, 2);
                 return;
             }
-            string date = S.Today == Special.Payday ? $"PAYDAY: {Config.PaydayTickets}X TICKETS"
-                : S.Today == Special.Telethon ? $"TELETHON: PRIZE X{Config.TelethonPrize}"
-                : S.Today == Special.Nephew ? $"NEPHEW: {string.Join(" ", S.Nephews.Select(n => n.ToString("00")))}" : null;
+            string date = S.Today switch
+            {
+                Special.Payday => $"PAYDAY: {Config.PaydayTickets}X TICKETS",
+                Special.Telethon => $"TELETHON: PRIZE X{Config.TelethonPrize}",
+                Special.Nephew => $"NEPHEW: {string.Join(" ", S.Nephews.Select(n => n.ToString("00")))}",
+                _ => null
+            };
             if (date == null) return;
             g.Chip(16, 32, date.Length * 8 + 16, 24, HGold);
             g.Text(date, 24, 36, HPlate, 1, 2);
@@ -440,6 +468,61 @@ namespace NoWinners
             g.Rect((640 - w) / 2, 150 - h / 2 - 2, w, h + 4, HPlate);
             g.Rect((640 - w) / 2, 150 - h / 2, w, h, game.Live ? HRed : HGold);
             if (wipe >= 1 && close >= 1) g.Centred(game.Banner, 138, HPlate, 2, 3);
+        }
+
+        // The tutorial: a panel top right, and blinking brackets on what it's about. Off screen, an arrow at the edge.
+        void Coach(Canvas8 g)
+        {
+            string text = game.Tutorial;
+            if (text == null) return;
+            var cam = Camera.main;
+            var c = Still || (int)(Time.unscaledTime * 3) % 2 == 0 ? HGold : HInk; // Swaps colour 1.5 times a second, never flashes off.
+            bool left = false, right = false;
+            foreach (var col in game.TutorialTargets())
+            {
+                var b = col.bounds;
+                int x0 = int.MaxValue, y0 = int.MaxValue, x1 = int.MinValue, y1 = int.MinValue;
+                bool behind = false;
+                for (int i = 0; i < 8; i++)
+                {
+                    var p = cam.WorldToScreenPoint(new Vector3((i & 1) == 0 ? b.min.x : b.max.x, (i & 2) == 0 ? b.min.y : b.max.y, (i & 4) == 0 ? b.min.z : b.max.z));
+                    behind |= p.z < 0;
+                    var h = Game.ScreenToHud(p);
+                    x0 = Mathf.Min(x0, h.x); y0 = Mathf.Min(y0, h.y); x1 = Mathf.Max(x1, h.x); y1 = Mathf.Max(y1, h.y);
+                }
+                if (behind || x1 < 0 || x0 >= 640 || y1 < 0 || y0 >= 360)
+                {
+                    if (cam.transform.InverseTransformPoint(b.center).x > 0) right = true; else left = true;
+                    continue;
+                }
+                Brackets(g, x0 - 4, y0 - 4, x1 + 4, y1 + 4, c);
+            }
+            if (left) { g.Chip(8, 168, 48, 24, c); g.Text("< A", 12, 172, HPlate, 1, 2); }
+            if (right) { g.Chip(584, 168, 48, 24, c); g.Text("D >", 588, 172, HPlate, 1, 2); }
+
+            var lines = Wrap(text, 27).ToList();
+            int top = 32, ph = 32 + lines.Count * 12 + 16;
+            g.ChipFrame(400, top, 232, ph, HGold, HPlate);
+            g.Text($"TUTORIAL {game.TutorialStep + 1}/{Game.TutorialSteps}", 412, top + 10, HGold);
+            for (int i = 0; i < lines.Count; i++) g.Text(lines[i], 412, top + 28 + i * 12, HInk);
+            g.Right("TAB: SKIP", 620, top + ph - 16, HDim);
+        }
+
+        // Corner brackets with a dark rim, so they read on any background.
+        static void Brackets(Canvas8 g, int x0, int y0, int x1, int y1, Color32 c)
+        {
+            const int L = 10;
+            for (int pass = 0; pass < 2; pass++)
+            {
+                int t = pass == 0 ? 4 : 2, o = pass == 0 ? -1 : 0;
+                var k = pass == 0 ? HPlate : c;
+                foreach (var (x, y, dx, dy) in new[] { (x0, y0, 1, 1), (x1, y0, -1, 1), (x0, y1, 1, -1), (x1, y1, -1, -1) })
+                {
+                    int ax = x + o * dx, ay = y + o * dy;
+                    g.Rect(dx > 0 ? ax : ax - L + 1, dy > 0 ? ay : ay - t + 1, L, t, k);
+                    g.Rect(dx > 0 ? ax : ax - t + 1, dy > 0 ? ay : ay - L + 1, t, L, k);
+                }
+            }
         }
 
         static void HudButton(Canvas8 g, int x, int y, int w, string label, bool sel)
@@ -483,7 +566,6 @@ namespace NoWinners
             for (int i = 0; i < items.Length; i++) HudButton(g, 200, 168 + i * 40, 240, items[i], game.Sel == i);
         }
 
-        // ---- Desk ----
         void DrawClock()
         {
             var c = Room.Clock;

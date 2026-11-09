@@ -39,9 +39,34 @@ namespace NoWinners.Tests
         }
 
         [UnityTest]
+        public IEnumerator The_tutorial_row_turns_the_coach_off_and_on()
+        {
+            Game.KeepLog = false;
+            yield return SceneManager.LoadSceneAsync("Desk");
+            yield return null;
+            game = Object.FindAnyObjectByType<Game>();
+            bool was = Prefs.Tutorial;
+            game.Click(Vector2.zero); // Start card to the title menu.
+            game.OpenSettings();
+            yield return new WaitForSeconds(1.2f); // The camera leans in to the monitor.
+            game.Click(game.MonitorToScreen(364 + 36, 196 + 12)); // OFF
+            Assert.IsFalse(Prefs.Tutorial);
+            Assert.AreEqual(Game.TutorialSteps, game.TutorialStep, "off hides it at once");
+            game.Click(game.MonitorToScreen(364 + 80 + 36, 196 + 12)); // ON
+            Assert.IsTrue(Prefs.Tutorial);
+            Assert.AreEqual(0, game.TutorialStep, "on in week 1 starts it over");
+            yield return new WaitForSecondsRealtime(.2f); // The monitor redraws on a 0.1 s timer.
+            Directory.CreateDirectory("Logs/Shots");
+            File.WriteAllBytes("Logs/Shots/settings-tutorial.png", game.Room.Monitor.Tex.EncodeToPNG());
+            Prefs.Tutorial = was; // Nothing here calls Save.
+        }
+
+        [UnityTest]
         public IEnumerator A_week_plays_through_the_props()
         {
             Game.KeepLog = false;
+            int hadTutorial = PlayerPrefs.GetInt("tutorialDone"); // Restored below: don't eat the developer's own tutorial.
+            PlayerPrefs.DeleteKey("tutorialDone");
             yield return SceneManager.LoadSceneAsync("Desk");
             yield return null;
             game = Object.FindAnyObjectByType<Game>();
@@ -64,6 +89,7 @@ namespace NoWinners.Tests
             Assert.AreEqual(1, game.S.Week);
             yield return Settle(.3f);
             Shot(cam, "1-off-air");
+            StringAssert.StartsWith("OFF AIR", game.Tutorial, "the tutorial starts on a first run");
 
             // Off air: number hidden, cards refuse, one desk action.
             Assert.IsNull(game.S.Roll);
@@ -74,6 +100,9 @@ namespace NoWinners.Tests
             game.Look("machine"); // The desk actions are on the side table.
             yield return Settle();
             Shot(cam, "1b-side-table");
+            StringAssert.StartsWith("SIDE TABLE", game.Tutorial);
+            CollectionAssert.Contains(game.TutorialTargets().ToList(), game.Room.ActionProps[DeskAction.Bribe], "the tutorial brackets the props it's about");
+            File.WriteAllBytes("Logs/Shots/1b-tutorial-hud.png", game.Screens.Hud.Tex.EncodeToPNG());
             game.Click(At(game.Room.ActionProps[DeskAction.Bribe]));
             Assert.AreEqual(cash + Config.Bribe, game.S.Cash);
             Assert.AreEqual(DeskAction.Bribe, game.S.Acted);
@@ -97,6 +126,7 @@ namespace NoWinners.Tests
             int roll = game.S.Roll.Value;
             yield return Settle(Game.LockSeconds + .2f);
             Assert.IsTrue(game.Drawn);
+            StringAssert.StartsWith("ON AIR", game.Tutorial, "going live skips the optional rack step");
             int playable = Enumerable.Range(0, game.S.Hand.Count).First(game.CanPlay);
             Assert.AreEqual(Room.Hex("#D9C79A"), (Color32)game.Room.CardFaces[playable].Tex.GetPixel(127, 0), "playable cards light up when the machine locks");
             Shot(cam, "2-on-air");
@@ -112,6 +142,8 @@ namespace NoWinners.Tests
             Assert.IsFalse(game.Busy);
             Assert.AreEqual(to, game.Value);
             yield return null;
+            StringAssert.StartsWith("Press the red button", game.Tutorial);
+            CollectionAssert.Contains(game.TutorialTargets().ToList(), game.Room.GoButton);
             Shot(cam, "3-card-played");
 
             // Eject and replay, then announce.
@@ -125,6 +157,7 @@ namespace NoWinners.Tests
             Assert.AreEqual(1, game.S.Streak);
             Assert.AreEqual("tv", game.Station);
             yield return Settle();
+            StringAssert.StartsWith("The TV", game.Tutorial);
             Assert.AreEqual(Room.Hex("#FFF3D6"), (Color32)tv.GetPixel(300, 359 - 160), "the result ball shows the number");
             Shot(cam, "4-tv-clean");
 
@@ -134,6 +167,10 @@ namespace NoWinners.Tests
             yield return Settle(.3f);
             game.Click(Vector2.zero);
             Assert.AreEqual(2, game.S.Week);
+            yield return null;
+            Assert.IsNull(game.Tutorial, "the tutorial ends with week 1");
+            Assert.AreEqual(1, PlayerPrefs.GetInt("tutorialDone"), "and never comes back");
+            if (hadTutorial == 0) PlayerPrefs.DeleteKey("tutorialDone");
 
             // Next week: a forced scandal goes TV, then reveal on the monitor, then week 3.
             yield return Settle();

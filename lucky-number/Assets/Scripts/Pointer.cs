@@ -102,14 +102,14 @@ namespace NoWinners
             if (card >= 0 && game.Punching >= 0 && offAir)
             {
                 ok = !s.Hand[card].IsSpecial;
-                name = ok ? $"RE-PUNCH {s.Hand[card]} INTO {s.Rack[game.Punching]}" : $"CARD {s.Hand[card]}: ALREADY SPECIAL";
+                name = ok ? $"REPLACE {s.Hand[card]} INTO {s.Rack[game.Punching]}" : $"CARD {s.Hand[card]}: ALREADY A SPECIAL CARD";
                 return true;
             }
             int rack = System.Array.FindIndex(r.Rack, t => t.GetComponent<Collider>() == c);
             if (rack >= 0)
             {
                 ok = offAir && game.Result == null;
-                name = $"RACK {s.Rack[rack]}" + (ok ? (game.Punching == rack ? ": PUT BACK" : ": RE-PUNCH") : ": OFF AIR ONLY");
+                name = $"RACK {s.Rack[rack]}" + (ok ? (game.Punching == rack ? ": PUT BACK" : ": REPLACE") : ": ADJUST CARD IN OFF AIR");
                 return true;
             }
             if (c.transform == r.Slip)
@@ -132,7 +132,12 @@ namespace NoWinners
             foreach (var kv in r.ActionProps)
             {
                 if (c != kv.Value) continue;
-                string thing = kv.Key == DeskAction.Supplier ? "PHONE" : kv.Key == DeskAction.Bribe ? "ENVELOPE" : "SHREDDER";
+                string thing = kv.Key switch
+                {
+                    DeskAction.Supplier => "PHONE",
+                    DeskAction.Bribe => "ENVELOPE",
+                    _ => "SHREDDER"
+                };
                 string job = kv.Key.ToString().ToUpper();
                 bool cancel = kv.Key == DeskAction.Shred && game.Shredding;
                 ok = cancel || (offAir && s.Acted == null);
@@ -143,24 +148,20 @@ namespace NoWinners
             return false;
         }
 
-        // Matches the click areas in Game.ClickMenu and the menu layouts in Screens.
         bool OverMenu(Vector2 at)
         {
-            if (game.Mode == Mode.Start) return true; // Any click starts.
-            var r = Game.HudRect;
-            int sc = Game.HudScale;
-            var hud = new Vector2Int(Mathf.FloorToInt((at.x - r.x) / sc), Mathf.FloorToInt((Screen.height - at.y - r.y) / sc));
-            if (game.Mode == Mode.Paused) return Any(3, i => In(hud, 200, 168 + i * 40, 240, 32));
-            if (game.Mode == Mode.Play) return Any(2, i => In(hud, 176, 232 + i * 40, 288, 32)); // End card.
+            if (game.Mode == Mode.Start) return true;
+            var hud = Game.ScreenToHud(at);
+            if (game.Mode == Mode.Paused) return Any(3, i => Game.In(hud, 200, 168 + i * 40, 240, 32));
+            if (game.Mode == Mode.Play) return Any(2, i => Game.In(hud, 176, 232 + i * 40, 288, 32));
             if (!Physics.Raycast(Camera.main.ScreenPointToRay(at), out var hit, 10) || hit.collider != game.Room.MonitorScreen) return false;
             var uv = hit.collider.transform.InverseTransformPoint(hit.point);
             var m = new Vector2Int(Mathf.FloorToInt((uv.x + .5f) * 640), Mathf.FloorToInt((.5f - uv.y) * 360));
-            if (game.Mode == Mode.Title) return Any(3, i => In(m, 352, 184 + i * 40, 272, 32));
-            return In(m, 352, 44, 272, Game.BackY + 32 - 44); // Settings: two rows every 64 px from y 44, then BACK, all on the right panel.
+            if (game.Mode == Mode.Title) return Any(3, i => Game.In(m, 352, 184 + i * 40, 272, 32));
+            return Game.In(m, 352, 44, 272, Game.BackY + 32 - 44);
         }
 
         static bool Any(int n, System.Func<int, bool> f) { for (int i = 0; i < n; i++) if (f(i)) return true; return false; }
-        static bool In(Vector2Int p, int x, int y, int w, int h) => p.x >= x && p.x < x + w && p.y >= y && p.y < y + h;
 
         // Corner brackets round the thing on screen, and its name on a plate above. Drawn in whole HUD pixels so it stays crisp.
         void OnGUI()
