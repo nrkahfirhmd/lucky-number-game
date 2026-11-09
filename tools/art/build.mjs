@@ -456,18 +456,18 @@ const layout = {
     Place('machine_base', [3.1, 0, -1.4], -Math.PI / 2),
     Place('machine_dome', [3.1, 0, -1.4], -Math.PI / 2),
     // Nothing sits in front of the monitor except the card hand, so the board is never covered.
-    // Left of the monitor, on air: card reader with eject in front, clock behind.
+    // Left of the monitor, on air: card reader with eject in front.
     Place('card_reader', [-0.54, DESK_TOP, -2.95]),
     Place('card_reader_lamp', [-0.47, DESK_TOP + 0.05, -2.884]),
     Place('undo_button_base', [-0.53, DESK_TOP, -2.72]),
     Place('undo_button_cap', [-0.53, DESK_TOP + 0.018, -2.72]),
-    Place('clock', [-0.72, DESK_TOP, -3.22], 0.35),
     Place('mug', [-0.9, DESK_TOP, -3.0]),
-    // Right of the monitor: the go-live switch with the red button in front.
+    // Right of the monitor: the go-live switch with the red button in front, the on-air clock behind.
     Place('switch_base', [0.55, DESK_TOP, -2.97]),
     Place('switch_lever', [0.55, DESK_TOP + 0.028, -2.97]),
     Place('big_button_base', [0.6, DESK_TOP, -2.72]),
     Place('big_button_cap', [0.6, DESK_TOP + 0.015, -2.72]),
+    Place('clock', [0.72, DESK_TOP, -3.22], -0.35),
     // Pushed to the desk's corner and turned inward, so it frames the calendar rather than covering it.
     Place('lamp', [-0.88, DESK_TOP, -2.72], 1.2),
     // Wall paper, in the gaps either side of the monitor. Newspaper beside the TV, where you look at a result.
