@@ -10,8 +10,8 @@ namespace NoWinners
     {
         public const int CardCount = 6;
         public const float CardBaseY = 0.8f, CardZ = 2.66f, CardStep = 0.145f;
-        public static readonly Vector3 CardEuler = new Vector3(75.7f, 0, 0), ReaderSlot = new Vector3(-0.54f, 0.9f, 2.96f);
-        public static readonly Vector3 GoRest = new Vector3(.6f, .788f, 2.72f);
+        public static readonly Vector3 CardEuler = new Vector3(75.7f, 0, 0), ReaderSlot = new Vector3(-0.56f, 0.87f, 3.01f);
+        public static readonly Vector3 GoRest = new Vector3(.52f, .788f, 2.72f), CardSize = new Vector3(.125f, .172f, 1);
 
         public readonly Canvas8 Monitor = new Canvas8(640, 360), Tv = new Canvas8(640, 360);
         public readonly Canvas8 Calendar = new Canvas8(256, 320, mips: true), Paper = new Canvas8(256, 300, mips: true);
@@ -19,6 +19,17 @@ namespace NoWinners
         public readonly Canvas8 GoPlate, UndoPlate, LivePlate;
         public readonly Canvas8[] CardFaces = new Canvas8[CardCount];
         public readonly Transform[] Cards = new Transform[CardCount];
+        // v2: the special cards, leaning in their wooden rack under the monitor's chin, and the slip the card reader prints.
+        public readonly Canvas8[] RackFaces = new Canvas8[Config.RackMax];
+        public readonly Transform[] Rack = new Transform[Config.RackMax];
+        public readonly Canvas8 SlipPaper = new Canvas8(160, 192, mips: true);
+        public readonly Transform Slip;
+        public const float SlipH = .24f;
+        // The card reader doubles as the printer: the slip rises out of its top slot (reader x -0.645..-0.435, top y 0.907).
+        // Positions match tools/art/build.mjs, with z flipped. The reader's slot is at y 0.855, z 3.01.
+        public static readonly Vector3 SlipRest = new Vector3(-.56f, .855f + SlipH / 2 - .015f, 3.01f), SlipPinned = new Vector3(.43f, 1.29f, 2.925f);
+        public const float SlipPinnedScale = .6f; // Pinned small on the monitor's top-right corner, clear of the board and the staff notice.
+        public static readonly Quaternion SlipRestTurn = Quaternion.Euler(8, 0, 0), SlipPinnedTurn = Quaternion.Euler(0, 0, -8);
         public readonly Transform[] Balls = new Transform[14];
         public readonly Collider MonitorScreen, GoButton, UndoButton, LiveSwitch, CalendarPaper;
         public readonly Dictionary<DeskAction, Collider> ActionProps = new Dictionary<DeskAction, Collider>();
@@ -123,16 +134,29 @@ namespace NoWinners
             for (int i = 0; i < CardCount; i++)
             {
                 CardFaces[i] = new Canvas8(128, 176, mips: true);
-                var card = Plane(CardFaces[i].Tex, .125f, .172f, (i - 2.5f) * CardStep, CardBaseY, CardZ, CardEuler);
+                var card = Plane(CardFaces[i].Tex, CardSize.x, CardSize.y, (i - 2.5f) * CardStep, CardBaseY, CardZ, CardEuler);
                 card.AddComponent<BoxCollider>();
                 Cards[i] = card.transform;
             }
 
+            // The rack (card_rack at x -0.3, z 2.885): cards stand on its front lip and lean back on the rail.
+            for (int i = 0; i < Config.RackMax; i++)
+            {
+                RackFaces[i] = new Canvas8(128, 176, mips: true);
+                var r = Plane(RackFaces[i].Tex, .07f, .096f, -.39f + i * .09f, .828f, 2.885f, new Vector3(25, 0, 0));
+                r.AddComponent<BoxCollider>();
+                Rack[i] = r.transform;
+            }
+            // The slip. Pinned, it moves to the monitor's top-right edge.
+            var slip = Plane(SlipPaper.Tex, .2f, SlipH, SlipRest.x, SlipRest.y, SlipRest.z, SlipRestTurn.eulerAngles);
+            slip.AddComponent<BoxCollider>();
+            Slip = slip.transform;
+
             // Click targets. A unit box scaled to the screen, so the board's square maths works in local space.
             MonitorScreen = Hit("MonitorScreen", new Vector3(0, 1.063f, 2.95f), new Vector3(.8f, .45f, .01f));
-            GoButton = Hit("GoButton", new Vector3(.6f, .8f, 2.72f), new Vector3(.2f, .06f, .2f));
-            UndoButton = Hit("UndoButton", new Vector3(-.53f, .79f, 2.72f), new Vector3(.14f, .04f, .1f));
-            LiveSwitch = Hit("LiveSwitch", new Vector3(.55f, .82f, 2.97f), new Vector3(.14f, .12f, .1f));
+            GoButton = Hit("GoButton", new Vector3(.52f, .8f, 2.72f), new Vector3(.2f, .06f, .2f));
+            UndoButton = Hit("UndoButton", new Vector3(-.52f, .79f, 2.8f), new Vector3(.14f, .04f, .1f));
+            LiveSwitch = Hit("LiveSwitch", new Vector3(.56f, .82f, 2.97f), new Vector3(.14f, .12f, .1f));
             // The calendar paper, 0.42 x 0.525 (wallPaper in build.mjs), as a unit box like the monitor so tiles map in local space.
             var cal = art.Find("calendar").GetComponentInChildren<Renderer>().bounds;
             CalendarPaper = Hit("CalendarPaper", new Vector3(cal.center.x, cal.min.y + .2625f, cal.min.z), new Vector3(.42f, .525f, .01f));
@@ -142,15 +166,15 @@ namespace NoWinners
             ActionProps[DeskAction.Shred] = Hit("Shredder", new Vector3(1.75f, .85f, 2.46f), new Vector3(.12f, .09f, .18f));
 
             // Live labels. Supplier, Bribe and Shred are explained on the wall poster instead.
-            LivePlate = Plate(192, 30, .15f, .025f, .55f, .005f);
-            GoPlate = Plate(256, 48, .17f, .032f, .6f, .3f);
-            UndoPlate = Plate(192, 32, .12f, .02f, -.53f, .28f);
+            LivePlate = Plate(192, 30, .15f, .025f, .56f, .005f);
+            GoPlate = Plate(256, 48, .17f, .032f, .52f, .3f);
+            UndoPlate = Plate(192, 32, .12f, .02f, -.52f, .2f);
 
             // Moving parts.
             GoCap = art.Find("big_button_cap");
             Lever = new GameObject("Lever").transform;
             Lever.SetParent(root);
-            Lever.position = new Vector3(.55f, .801f, 2.97f);
+            Lever.position = new Vector3(.56f, .801f, 2.97f);
             art.Find("switch_lever").SetParent(Lever, true);
 
             readerLamp = art.Find("card_reader_lamp").GetComponentInChildren<Renderer>();

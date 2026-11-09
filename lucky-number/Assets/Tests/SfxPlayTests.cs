@@ -65,11 +65,11 @@ namespace NoWinners.Tests
             game.Click(Vector2.zero); // Start card to the title menu.
             game.OpenSettings();
             yield return new WaitForSeconds(1.2f); // The camera leans in to the monitor.
-            game.Click(game.MonitorToScreen(364 + 44, 108 + 36)); // A quarter along the volume slider.
+            game.Click(game.MonitorToScreen(364 + 44, 44 + 36)); // A quarter along the volume slider.
             yield return null;
             Assert.AreEqual(.25f, Prefs.Volume, .03f);
             Assert.AreEqual(Prefs.Volume, AudioListener.volume, .001f);
-            Assert.AreEqual(1, game.Sel, "the volume row takes focus");
+            Assert.AreEqual(0, game.Sel, "the volume row takes focus");
             Heard(game, "ui_slider_tick");
             yield return new WaitForSecondsRealtime(.2f); // The monitor redraws on a 0.1 s timer.
             System.IO.Directory.CreateDirectory("Logs/Shots");

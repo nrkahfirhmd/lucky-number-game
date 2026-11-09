@@ -29,8 +29,8 @@ namespace NoWinners
         WeekResult result;
         string station, hover;
         int preview = -1;
-        float crt, volume, nextClock, lastFlip;
-        bool reduce, longTarget, tock;
+        float volume, nextClock, lastFlip;
+        bool reduce, tock;
 
         void Awake()
         {
@@ -130,8 +130,8 @@ namespace NoWinners
             else if (game.Sel != sel && (m != Mode.Play || game.EndCardUp)) Play("ui_menu_move");
             if (m == Mode.Settings)
             {
-                if (Prefs.Crt != crt || Prefs.Volume != volume) Play("ui_slider_tick");
-                else if (Prefs.ReduceMotion != reduce || Prefs.Long != longTarget) Play("ui_menu_move");
+                if (Prefs.Volume != volume) Play("ui_slider_tick");
+                else if (Prefs.ReduceMotion != reduce) Play("ui_menu_move");
             }
         }
 
@@ -202,7 +202,7 @@ namespace NoWinners
         void Clock()
         {
             if (!game.Drawn || game.Result != null) { tickStep = -1; deadAir.Stop(); stall = -1; return; }
-            float left = Prefs.Target - game.LiveSeconds;
+            float left = Config.Target - game.LiveSeconds;
             int step = Mathf.CeilToInt(left * 2);
             if (step != tickStep && step >= 1 && step <= 10 && tickStep != -1) Play(step <= 2 ? "rig_timer_tick_final" : "rig_timer_tick");
             tickStep = step;
@@ -243,7 +243,7 @@ namespace NoWinners
             played = game.Played.Count;
             result = game.Result; revealed = game.Result != null && game.Result.Revealed; endCard = game.EndCardUp;
             station = game.Station; hover = game.HoverText; preview = game.Preview;
-            crt = Prefs.Crt; volume = Prefs.Volume; reduce = Prefs.ReduceMotion; longTarget = Prefs.Long;
+            volume = Prefs.Volume; reduce = Prefs.ReduceMotion;
         }
     }
 }

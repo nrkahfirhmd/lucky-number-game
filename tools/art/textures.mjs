@@ -141,12 +141,12 @@ function memo() {
   const g = new Img(256, 320, '#F4EFDC'), ink = '#1C1E28';
   g.rect(0, 0, 256, 24, '#1A2AA8').centred('STAFF NOTICE', 8, '#F4EFDC');
   g.centred('CHANGE THE', 34, ink, 2, 2).centred('NUMBER.', 54, ink, 2, 2).centred('NOBODY', 78, '#B3241C', 2, 2).centred('MAY WIN.', 98, '#B3241C', 2, 2);
-  g.rect(12, 122, 232, 2, ink).centred('OFF AIR: ONE JOB A WEEK', 130, ink);
+  g.rect(12, 122, 232, 2, ink).centred('OFF AIR: ONE JOB, IT COSTS', 130, ink);
   const row = (y, name, line, draw) => { g.rect(12, y, 40, 40, '#D0C8AE'); draw(12, y); g.text(name, 60, y + 6, ink, 2, 2).text(line, 60, y + 28, '#55523F'); };
-  row(146, 'SUPPLIER', '+1 CARD', (x, y) => { g.rect(x + 6, y + 8, 28, 6, '#A02820').rect(x + 8, y + 16, 24, 16, '#A02820').disc(x + 20, y + 24, 5, '#E8E2CC'); });
-  row(194, 'BRIBE', '+80 CASH, PRIZE +40', (x, y) => { g.rect(x + 5, y + 10, 30, 20, '#D8C89A').frame(x + 5, y + 10, 30, 20, '#9A8A60', 1).disc(x + 20, y + 20, 4, '#A02820'); });
-  row(242, 'SHRED', '-2 HOLDERS, 1 SQUARE', (x, y) => { g.rect(x + 6, y + 8, 28, 10, '#3A3A40'); for (let i = 0; i < 5; i++) g.rect(x + 8 + i * 5, y + 18, 3, 12 + (i % 2) * 6, '#F4EFDC'); });
-  g.rect(0, 294, 256, 26, ink).centred('THEN THROW THE SWITCH.', 303, '#FFE14A');
+  row(146, 'SUPPLIER', '+1 CARD FOR 60 CASH', (x, y) => { g.rect(x + 6, y + 8, 28, 6, '#A02820').rect(x + 8, y + 16, 24, 16, '#A02820').disc(x + 20, y + 24, 5, '#E8E2CC'); });
+  row(194, 'BRIBE', '+80, PRIZE +40 FOR GOOD', (x, y) => { g.rect(x + 5, y + 10, 30, 20, '#D8C89A').frame(x + 5, y + 10, 30, 20, '#9A8A60', 1).disc(x + 20, y + 20, 4, '#A02820'); });
+  row(242, 'SHRED', 'CLEAR 1, NEXT DOOR FILLS', (x, y) => { g.rect(x + 6, y + 8, 28, 10, '#3A3A40'); for (let i = 0; i < 5; i++) g.rect(x + 8 + i * 5, y + 18, 3, 12 + (i % 2) * 6, '#F4EFDC'); });
+  g.rect(0, 294, 256, 26, ink).centred('OR LIE LOW. THEN THE SWITCH.', 303, '#FFE14A');
   return g;
 }
 function newspaper(a, b) {

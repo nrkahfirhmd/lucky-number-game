@@ -72,13 +72,13 @@ namespace NoWinners
         {
             if (game.Busy) return Kind.Arrow;
             if (game.Result != null) return Kind.Hand; // Any click moves the result on.
-            if (game.Station == "calendar") return Kind.Hand; // Any click puts it down.
+            if (game.Station == "calendar" || game.Station == "slip") return Kind.Hand; // Any click puts it down, or takes or tears the slip.
             if (game.Station != "monitor" && game.Station != "machine") return Kind.Arrow;
             if (!Physics.Raycast(Camera.main.ScreenPointToRay(at), out var hit, 10)) return Kind.Arrow;
             var c = hit.collider;
             if (c == game.Room.MonitorScreen)
                 return game.Shredding && BoardSquare(c, hit.point) ? Kind.Hand : Kind.Arrow;
-            if (!Describe(c, out var name, out bool ok)) return Kind.Arrow;
+            if (!Describe(c, hit.point, out var name, out bool ok)) return Kind.Arrow;
             focus = c;
             focusOk = ok;
             Label = name;
@@ -93,12 +93,31 @@ namespace NoWinners
         }
 
         // Name for the tag, and whether a click would do anything now. The name says why not, when it wouldn't.
-        bool Describe(Collider c, out string name, out bool ok)
+        bool Describe(Collider c, Vector3 point, out string name, out bool ok)
         {
             var r = game.Room;
             var s = game.S;
             bool offAir = !game.Live;
             int card = System.Array.FindIndex(r.Cards, t => t.GetComponent<Collider>() == c);
+            if (card >= 0 && game.Punching >= 0 && offAir)
+            {
+                ok = !s.Hand[card].IsSpecial;
+                name = ok ? $"RE-PUNCH {s.Hand[card]} INTO {s.Rack[game.Punching]}" : $"CARD {s.Hand[card]}: ALREADY SPECIAL";
+                return true;
+            }
+            int rack = System.Array.FindIndex(r.Rack, t => t.GetComponent<Collider>() == c);
+            if (rack >= 0)
+            {
+                ok = offAir && game.Result == null;
+                name = $"RACK {s.Rack[rack]}" + (ok ? (game.Punching == rack ? ": PUT BACK" : ": RE-PUNCH") : ": OFF AIR ONLY");
+                return true;
+            }
+            if (c.transform == r.Slip)
+            {
+                ok = true;
+                name = $"SLIP: {Slips.Name(s.Pinned != Slip.None ? s.Pinned : s.Offer)}" + (s.Pinned != Slip.None ? " TAKEN" : "");
+                return true;
+            }
             if (card >= 0)
             {
                 ok = game.CanPlay(card);
@@ -137,7 +156,7 @@ namespace NoWinners
             var uv = hit.collider.transform.InverseTransformPoint(hit.point);
             var m = new Vector2Int(Mathf.FloorToInt((uv.x + .5f) * 640), Mathf.FloorToInt((.5f - uv.y) * 360));
             if (game.Mode == Mode.Title) return Any(3, i => In(m, 352, 184 + i * 40, 272, 32));
-            return In(m, 352, 44, 272, 288); // Settings: four rows every 64 px from y 44, then BACK at y 300, all on the right panel.
+            return In(m, 352, 44, 272, Game.BackY + 32 - 44); // Settings: two rows every 64 px from y 44, then BACK, all on the right panel.
         }
 
         static bool Any(int n, System.Func<int, bool> f) { for (int i = 0; i < n; i++) if (f(i)) return true; return false; }

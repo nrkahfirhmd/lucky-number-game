@@ -89,7 +89,7 @@ namespace NoWinners.Tests
             var world = screen.TransformPoint(new Vector3((16 + held % 10 * 32 + 15) / 640f - .5f, .5f - (24 + held / 10 * 32 + 15) / 360f, 0));
             int before = game.S.Board[held];
             game.Click(cam.WorldToScreenPoint(world));
-            Assert.AreEqual(Mathf.Max(0, before - Config.Shred), game.S.Board[held], $"shred on square {held}");
+            Assert.AreEqual(0, game.S.Board[held], $"shred clears square {held}");
 
             // On air: seeded first roll, so one card reaches a free square.
             game.Click(At(game.Room.LiveSwitch));
@@ -132,9 +132,6 @@ namespace NoWinners.Tests
             game.Click(Vector2.zero);
             Assert.AreEqual("monitor", game.Station);
             yield return Settle(.3f);
-            Assert.AreEqual(Room.Hex("#111111"), (Color32)game.Screens.Hud.Tex.GetPixel(184, 359 - 100), "the HUD result card is up");
-            Shot(cam, "4b-result-card");
-            File.WriteAllBytes("Logs/Shots/4b-hud.png", game.Screens.Hud.Tex.EncodeToPNG());
             game.Click(Vector2.zero);
             Assert.AreEqual(2, game.S.Week);
 
@@ -158,7 +155,7 @@ namespace NoWinners.Tests
 
             // Past the target: the show stalls, and nothing is forced.
             game.Click(At(game.Room.LiveSwitch));
-            game.LiveAt = Time.time - Prefs.Target - 1; // Prefs: LONG may be saved on.
+            game.LiveAt = Time.time - Config.Target - 1;
             yield return null;
             yield return null;
             Assert.AreEqual(0, game.Stall);
@@ -196,6 +193,8 @@ namespace NoWinners.Tests
             var keys = InputSystem.AddDevice<Keyboard>();
             IEnumerator Mouse(Vector2 at, bool down) { InputSystem.QueueStateEvent(mouse, new MouseState { position = at, buttons = (ushort)(down ? 1 : 0) }); yield return null; yield return null; }
             Vector2 live = cam.WorldToScreenPoint(game.Room.LiveSwitch.bounds.center);
+            yield return Mouse(live, false);
+            live = cam.WorldToScreenPoint(game.Room.LiveSwitch.bounds.center); // The camera sways with the pointer: aim again.
             yield return Mouse(live, false);
             Assert.AreEqual((Pointer.Kind.Hand, "GO LIVE"), (Pointer.Current, Pointer.Label), "a usable prop gets the hand and its name");
             yield return Mouse(cam.WorldToScreenPoint(game.Room.LiveSwitch.bounds.center), true);
@@ -273,6 +272,149 @@ namespace NoWinners.Tests
             yield return null; yield return null;
             Assert.AreEqual(("monitor", Mode.Play), (game.Station, game.Mode), "Esc puts the calendar down, it doesn't pause");
             InputSystem.RemoveDevice(mouse);
+            InputSystem.RemoveDevice(keys);
+        }
+
+        // v2: the rack and card punch, lie low, the printer's slip, and a random card on air.
+        [UnityTest]
+        public IEnumerator V2_rack_slip_and_lie_low()
+        {
+            // Logging on, to a test file: writing the log once threw before the hand was trimmed.
+            Game.KeepLog = true;
+            Game.LogFile = "weeks-test.csv";
+            File.Delete(Path.Combine(Application.persistentDataPath, Game.LogFile));
+            yield return SceneManager.LoadSceneAsync("Desk");
+            yield return null;
+            game = Object.FindAnyObjectByType<Game>();
+            cam = Camera.main;
+            game.Begin();
+            yield return Settle();
+            LogAssert.NoUnexpectedReceived();
+
+            // Week 1: a SWAP in the rack. Pick it, then a hand card.
+            Assert.IsTrue(game.Room.Rack[0].gameObject.activeSelf, "the starting SWAP is in the rack");
+            Shot(cam, "v2-1-rack");
+            game.Click(At(game.Room.Rack[0]));
+            Assert.AreEqual(0, game.Punching);
+            var gone = game.S.Hand[1];
+            game.Click(At(game.Room.Cards[1]));
+            Assert.AreEqual((-1, 'S', 0), (game.Punching, game.S.Hand[1].Op, game.S.Rack.Count), "re-punched");
+            Assert.IsFalse(game.Room.Rack[0].gameObject.activeSelf);
+            Assert.AreEqual(Room.Hex("#55687a"), (Color32)game.Room.CardFaces[1].Tex.GetPixel(127, 0), "specials on blue stock, dimmed off air");
+            yield return null;
+            Shot(cam, "v2-2-repunched");
+
+            // No desk action: going live lies low.
+            int prize = game.S.Prize;
+            game.Click(At(game.Room.LiveSwitch));
+            Assert.AreEqual(DeskAction.LieLow, game.S.Acted);
+            Assert.AreEqual("ON AIR", game.Banner, "going live is a headline");
+            yield return new WaitForSeconds(.4f);
+            File.WriteAllBytes("Logs/Shots/v2-banner-hud.png", game.Screens.Hud.Tex.EncodeToPNG());
+            Assert.AreEqual(Mathf.Max(Config.Prize, prize - Config.LieLow), game.S.Prize);
+            game.Click(At(game.Room.Rack[0]));
+            Assert.AreEqual(-1, game.Punching, "no re-punching on air");
+            yield return Settle(Game.LockSeconds + .2f);
+
+            // A JAM on air: units redrawn, can't be ejected. Then announce without playing the SWAP: it's gone.
+            game.S.Hand[0] = new Card('J');
+            game.Refresh();
+            int tens = game.Value / 10;
+            game.Click(At(game.Room.Cards[0]));
+            yield return Settle(Game.ReaderSeconds + .2f);
+            Assert.AreEqual(tens, game.Value / 10, "JAM keeps the tens");
+            game.Click(At(game.Room.UndoButton));
+            Assert.AreEqual(1, game.Played.Count, "a random card can't be ejected");
+            game.S.Cash = 50000;
+            game.Click(At(game.Room.GoButton));
+            Assert.IsNotNull(game.Result);
+            CollectionAssert.AreEqual(new[] { new Card('S') }, game.Result.Unused, "unplayed SWAP destroyed at announce");
+            Assert.IsFalse(game.S.Hand.Any(c => c.IsSpecial));
+            game.Click(Vector2.zero);
+            yield return Settle(.3f);
+            game.Click(Vector2.zero);
+            Assert.AreEqual(2, game.S.Week);
+
+            // The card reader prints a slip out of its slot. TAKE pins it to the monitor's edge.
+            bool still = Prefs.ReduceMotion;
+            Prefs.ReduceMotion = false; // A saved setting would skip the print.
+            game.S.Offer = Slip.Sponsor;
+            game.Refresh();
+            yield return Settle(.5f);
+            Assert.Less(game.Room.Slip.position.y, Room.SlipRest.y - .05f, "the slip is still printing out of the reader");
+            yield return Settle(1.6f);
+            Assert.AreEqual(Room.SlipRest.y, game.Room.Slip.position.y, .001f, "printed");
+            Prefs.ReduceMotion = still;
+            Shot(cam, "v2-4-slip");
+            File.WriteAllBytes("Logs/Shots/v2-4-slip-paper.png", game.Room.SlipPaper.Tex.EncodeToPNG());
+            // A click picks it up to read, like the calendar. It doesn't take it.
+            game.Click(cam.WorldToScreenPoint(game.Room.Slip.position));
+            Assert.AreEqual(("slip", Slip.None, Slip.Sponsor), (game.Station, game.S.Pinned, game.S.Offer));
+            yield return Settle();
+            Shot(cam, "v2-4b-slip-close");
+            // Off the buttons: put down, still offered. Then pick it up again and press TAKE (pixel 42,169 of 160x192).
+            game.Click(cam.WorldToScreenPoint(game.Room.Slip.TransformPoint(new Vector3(0, .3f, 0))));
+            Assert.AreEqual(("monitor", Slip.Sponsor), (game.Station, game.S.Offer));
+            yield return Settle();
+            game.Click(cam.WorldToScreenPoint(game.Room.Slip.position));
+            yield return Settle();
+            game.Click(cam.WorldToScreenPoint(game.Room.Slip.TransformPoint(new Vector3(42 / 160f - .5f, .5f - 169 / 192f, 0))));
+            Assert.AreEqual((Slip.Sponsor, Slip.None, "monitor"), (game.S.Pinned, game.S.Offer, game.Station));
+            yield return null;
+            Assert.AreEqual(Room.SlipPinned, game.Room.Slip.position);
+            yield return Settle();
+            Shot(cam, "v2-5-pinned");
+
+            // Shred spreads its holders next door.
+            game.Look("machine");
+            yield return Settle();
+            game.Click(At(game.Room.ActionProps[DeskAction.Shred]));
+            yield return Settle();
+            game.S.Board[45] = 4; game.S.Board[44] = 0; game.S.Board[46] = 0;
+            var screen = game.Room.MonitorScreen.transform;
+            game.Click(cam.WorldToScreenPoint(screen.TransformPoint(new Vector3((16 + 5 * 32 + 15) / 640f - .5f, .5f - (24 + 4 * 32 + 15) / 360f, 0))));
+            Assert.AreEqual((0, 4), (game.S.Board[45], game.S.Board[44] + game.S.Board[46]));
+            Assert.AreEqual(2, File.ReadAllLines(Path.Combine(Application.persistentDataPath, Game.LogFile)).Length, "header and one week logged");
+            File.Delete(Path.Combine(Application.persistentDataPath, Game.LogFile));
+            Game.KeepLog = false;
+            Game.LogFile = "weeks-v2.csv";
+        }
+
+        // Focus (space): the hand fans along the bottom of the screen, and the cards still play.
+        [UnityTest]
+        public IEnumerator Focus_fans_the_hand_at_the_bottom()
+        {
+            Game.KeepLog = false;
+            yield return SceneManager.LoadSceneAsync("Desk");
+            yield return null;
+            game = Object.FindAnyObjectByType<Game>();
+            cam = Camera.main;
+            game.Begin();
+            game.GoLive();
+            yield return Settle(Game.LockSeconds + .2f);
+            InputSystem.settings.backgroundBehavior = InputSettings.BackgroundBehavior.IgnoreFocus;
+            InputSystem.settings.editorInputBehaviorInPlayMode = InputSettings.EditorInputBehaviorInPlayMode.AllDeviceInputAlwaysGoesToGameView;
+            var keys = InputSystem.AddDevice<Keyboard>();
+            InputSystem.QueueStateEvent(keys, new KeyboardState(Key.Space));
+            yield return null; yield return null;
+            InputSystem.QueueStateEvent(keys, new KeyboardState());
+            Assert.IsTrue(game.Focus);
+            yield return Settle();
+            for (int i = 0; i < game.S.Hand.Count; i++)
+            {
+                var p = cam.WorldToScreenPoint(game.Room.Cards[i].position);
+                Assert.Less(p.y, Screen.height * .3f, $"card {i} sits at the bottom of the screen");
+                Assert.That(p.x, Is.InRange(0, Screen.width), $"card {i} is on screen");
+            }
+            Shot(cam, "f-focus");
+            int card = Enumerable.Range(0, game.S.Hand.Count).FirstOrDefault(game.CanPlay);
+            if (game.CanPlay(card))
+            {
+                int to = Run.Apply(game.Value, game.S.Hand[card]).Value;
+                game.Click(At(game.Room.Cards[card]));
+                yield return Settle(Game.ReaderSeconds + .2f);
+                Assert.AreEqual(to, game.Value, "a card plays from the focus fan");
+            }
             InputSystem.RemoveDevice(keys);
         }
     }

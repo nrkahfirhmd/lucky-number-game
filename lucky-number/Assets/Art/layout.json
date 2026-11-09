@@ -120,52 +120,61 @@
   {
    "model": "card_reader",
    "pos": [
-    -0.54,
-    0.773,
-    -2.95
-   ],
-   "rotY": 0
-  },
-  {
-   "model": "card_reader_lamp",
-   "pos": [
-    -0.47,
-    0.8230000000000001,
-    -2.884
-   ],
-   "rotY": 0
-  },
-  {
-   "model": "undo_button_base",
-   "pos": [
-    -0.53,
-    0.773,
-    -2.72
-   ],
-   "rotY": 0
-  },
-  {
-   "model": "undo_button_cap",
-   "pos": [
-    -0.53,
-    0.791,
-    -2.72
-   ],
-   "rotY": 0
-  },
-  {
-   "model": "mug",
-   "pos": [
-    -0.9,
+    -0.56,
     0.773,
     -3
    ],
    "rotY": 0
   },
   {
+   "model": "card_reader_lamp",
+   "pos": [
+    -0.49,
+    0.8230000000000001,
+    -2.934
+   ],
+   "rotY": 0
+  },
+  {
+   "model": "undo_button_base",
+   "pos": [
+    -0.52,
+    0.773,
+    -2.8
+   ],
+   "rotY": 0
+  },
+  {
+   "model": "undo_button_cap",
+   "pos": [
+    -0.52,
+    0.791,
+    -2.8
+   ],
+   "rotY": 0
+  },
+  {
+   "model": "mug",
+   "pos": [
+    -0.78,
+    0.773,
+    -3.08
+   ],
+   "rotY": 0
+  },
+  {
+   "model": "card_rack",
+   "pos": [
+    -0.3,
+    0.773,
+    -2.885
+   ],
+   "rotY": 0
+  },
+  {
    "model": "switch_base",
    "pos": [
-    0.55,
+    0.56,
     0.773,
     -2.97
    ],
@@ -174,7 +183,7 @@
   {
    "model": "switch_lever",
    "pos": [
-    0.55,
+    0.56,
     0.801,
     -2.97
    ],
@@ -183,7 +192,7 @@
   {
    "model": "big_button_base",
    "pos": [
-    0.6,
+    0.52,
     0.773,
     -2.72
    ],
@@ -192,7 +201,7 @@
   {
    "model": "big_button_cap",
    "pos": [
-    0.6,
+    0.52,
     0.788,
     -2.72
    ],

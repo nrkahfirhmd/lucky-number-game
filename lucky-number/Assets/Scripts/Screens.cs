@@ -51,6 +51,8 @@ namespace NoWinners
         public void DrawDesk()
         {
             DrawCards();
+            DrawRack();
+            DrawSlip();
             DrawPlates();
             DrawCalendar();
             DrawPaper();
@@ -80,6 +82,8 @@ namespace NoWinners
             DrawBoard(g);
             if (S.Today == Special.Nephew) foreach (int n in S.Nephews) Mark(g, n, Label); // The minister's numbers, all week.
             if (game.Preview >= 0) Dashed(g, game.Preview);
+            if (game.Shredding && game.Preview >= 0) foreach (int n in Run.Neighbours(game.Preview)) Dashed(g, n, Alarm); // Where its holders go.
+            if (game.PreviewRow >= 0) for (int n = game.PreviewRow * 10; n < game.PreviewRow * 10 + 10; n++) Dashed(g, n, Label); // JAM: anywhere in the row.
             if (!game.Drawn)
             {
                 NumberBox(g, "??", Dim); // Locked until the machine stops.
@@ -91,13 +95,14 @@ namespace NoWinners
             }
             // A card that just landed rolls the digits; the marks and verdict wait for it.
             bool rolling = game.Played.Count > 0 && !Still && t - game.LandedAt * 1000 < 300;
-            var cards = game.Played.Take(game.Played.Count - (rolling ? 1 : 0)).Select(i => S.Hand[i]).ToList();
-            var steps = Steps(S.Roll.Value, cards);
+            int shown = game.Played.Count - (rolling ? 1 : 0);
+            var cards = game.Played.Take(shown).Select(i => S.Hand[i]).ToList();
+            var steps = new[] { S.Roll.Value }.Concat(game.Landed.Take(shown)).ToList();
             int now = steps[steps.Count - 1];
             for (int i = 0; i < steps.Count - 1; i++) Mark(g, steps[i], Dim);
             Mark(g, now, Ink);
             NumberBox(g, rolling ? $"{(int)(t / 60) * 37 % 100:00}" : $"{now:00}", Ink);
-            Chain(g, Tokens(S.Roll.Value, cards), 184, Ink, Label);
+            Chain(g, Tokens(cards, steps), 184, Ink, Label);
             int h = S.Board[now], cost = S.CostOf(now, cards.Count);
             if (S.IsFavour(now)) Verdict(g, cost <= 0 ? $"NEPHEW +{-cost}" : $"NEPHEW -{cost}", cost <= 0 ? Good : Label);
             else if (h == 0) Verdict(g, "NOBODY HOLDS", Good);
@@ -111,7 +116,7 @@ namespace NoWinners
             DrawBoard(g);
             Mark(g, Result.Number, c);
             NumberBox(g, $"{Result.Number:00}", c);
-            Chain(g, Tokens(Result.From, Result.Path), 184, c, Label);
+            Chain(g, Tokens(Result.Path, Result.Steps), 184, c, Label);
             if (a.Tier != Tier.Scandal) { Verdict(g, a.Tier == Tier.Clean ? "NOBODY WON" : a.Reward > 0 ? "NEPHEW WON" : "SMALL WINNER", c); return; }
             Verdict(g, "SCANDAL", c, 2, 3);
             if (Result.Best.To == Result.Number) return;
@@ -161,13 +166,14 @@ namespace NoWinners
         static void Mark(Canvas8 g, int n, Color32 c) => g.Frame(14 + n % 10 * Cell, 22 + n / 10 * Cell, 34, 34, c);
 
         // Hover preview: where a card would land, or the square the shredder aims at.
-        static void Dashed(Canvas8 g, int n)
+        static void Dashed(Canvas8 g, int n, Color32? colour = null)
         {
             int x = 16 + n % 10 * Cell, y = 24 + n / 10 * Cell;
+            var c = colour ?? Ink;
             for (int i = 0; i < Square + 4; i += 6)
             {
-                g.Rect(x - 2 + i, y - 2, 3, 2, Ink); g.Rect(x - 2 + i, y + Square, 3, 2, Ink);
-                g.Rect(x - 2, y - 2 + i, 2, 3, Ink); g.Rect(x + Square, y - 2 + i, 2, 3, Ink);
+                g.Rect(x - 2 + i, y - 2, 3, 2, c); g.Rect(x - 2 + i, y + Square, 3, 2, c);
+                g.Rect(x - 2, y - 2 + i, 2, 3, c); g.Rect(x + Square, y - 2 + i, 2, 3, c);
             }
         }
 
@@ -177,18 +183,10 @@ namespace NoWinners
             g.Centred(label, 48, c, 10, 12, 488);
         }
 
-        static List<int> Steps(int from, List<Card> cards)
+        // Start, then each card and the number it landed on, so nobody does the arithmetic in their head.
+        static List<string> Tokens(List<Card> cards, List<int> steps)
         {
-            var steps = new List<int> { from };
-            foreach (var k in cards) steps.Add(Run.Apply(steps[steps.Count - 1], k) ?? steps[steps.Count - 1]);
-            return steps;
-        }
-
-        // Start, then each card and the number it lands on, so nobody does the arithmetic in their head.
-        static List<string> Tokens(int from, List<Card> cards)
-        {
-            var steps = Steps(from, cards);
-            var toks = new List<string> { $"{from:00}" };
+            var toks = new List<string> { $"{steps[0]:00}" };
             for (int i = 0; i < cards.Count; i++) { toks.Add(cards[i].ToString()); toks.Add($"{steps[i + 1]:00}"); }
             return toks;
         }
@@ -229,15 +227,11 @@ namespace NoWinners
         {
             g.Text("SETTINGS", 352, 24, Label, 2, 2);
             // Rows every 64 px from y 44, BACK below. Game.ClickMenu hit-tests the same layout.
-            SetRow(g, 44, "CRT STRENGTH", game.Sel == 0);
-            Slider(g, 44, Prefs.Crt);
-            SetRow(g, 108, "VOLUME", game.Sel == 1);
-            Slider(g, 108, Prefs.Volume);
-            SetRow(g, 172, "REDUCE MOTION", game.Sel == 2);
-            Seg(g, 364, 196, 72, new[] { "OFF", "ON" }, Prefs.ReduceMotion ? 1 : 0);
-            SetRow(g, 236, "ON-AIR TARGET", game.Sel == 3);
-            Seg(g, 364, 260, 104, new[] { "NORMAL", "LONG" }, Prefs.Long ? 1 : 0);
-            MonButton(g, 352, 300, 272, "BACK", game.Sel == Game.SettingRows);
+            SetRow(g, 44, "VOLUME", game.Sel == 0);
+            Slider(g, 44, Prefs.Volume);
+            SetRow(g, 108, "REDUCE MOTION", game.Sel == 1);
+            Seg(g, 364, 132, 72, new[] { "OFF", "ON" }, Prefs.ReduceMotion ? 1 : 0);
+            MonButton(g, 352, Game.BackY, 272, "BACK", game.Sel == Game.SettingRows);
         }
 
         static void Slider(Canvas8 g, int y, float v)
@@ -397,8 +391,8 @@ namespace NoWinners
             else if (game.Mode == Mode.Play)
             {
                 Bar(g);
-                if (Result != null && S.Over != Ending.None) { if (game.EndCardUp) EndCard(g); }
-                else if (Result != null && Result.Revealed) ResultCard(g);
+                if (Result == null) Banner(g);
+                if (Result != null && S.Over != Ending.None && game.EndCardUp) EndCard(g);
             }
             g.Apply();
         }
@@ -435,6 +429,19 @@ namespace NoWinners
             g.Text(date, 24, 36, HPlate, 1, 2);
         }
 
+        // The headline: a band that wipes across mid-screen for a couple of seconds. Red for ON AIR.
+        void Banner(Canvas8 g)
+        {
+            float age = Time.time - game.BannerAt;
+            if (game.Banner == null || age > 2.2f) return;
+            float wipe = Still ? 1 : Mathf.Clamp01(age / .18f), close = Still ? 1 : Mathf.Clamp01((2.2f - age) / .25f);
+            int h = Mathf.RoundToInt(40 * close / 2) * 2, w = Mathf.RoundToInt(640 * wipe);
+            if (h < 2) return;
+            g.Rect((640 - w) / 2, 150 - h / 2 - 2, w, h + 4, HPlate);
+            g.Rect((640 - w) / 2, 150 - h / 2, w, h, game.Live ? HRed : HGold);
+            if (wipe >= 1 && close >= 1) g.Centred(game.Banner, 138, HPlate, 2, 3);
+        }
+
         static void HudButton(Canvas8 g, int x, int y, int w, string label, bool sel)
         {
             if (sel) { g.Chip(x, y, w, 32, HGold); g.Text(">", x + 12, y + 8, HPlate, 1, 2); g.Centred(label, y + 8, HPlate, 2, 2, x + w / 2); }
@@ -449,27 +456,6 @@ namespace NoWinners
                 g.Text(label, x, y + i * 24 + 4, HDim);
                 g.Right(value, xr, y + i * 24, c, 1, 2);
             }
-        }
-
-        // The receipt for the week.
-        void ResultCard(Canvas8 g)
-        {
-            var a = Result.Air;
-            bool scandal = a.Tier == Tier.Scandal;
-            var rows = new List<(string, string, Color32)>
-            {
-                ("ON TIME", a.Bonus > 0 ? $"+{a.Bonus}" : "0", a.Bonus > 0 ? HGold : HDim),
-                ("PAYOUT", a.Pay > 0 ? $"-{a.Pay}" : "0", a.Pay > 0 ? HRed : HDim),
-                ("CASH", $"{Result.CashBefore} > {S.Cash}", scandal ? HRed : HGold),
-                ("STREAK", $"{Result.StreakBefore:00} > {S.Streak:00}", scandal ? HRed : HInk),
-            };
-            if (a.Reward > 0) rows.Insert(1, ("MINISTER", $"+{a.Reward}", HGold));
-            int extra = (rows.Count - 4) * 24; // Grows downward; the click anywhere still works.
-            g.ChipFrame(176, 64, 288, 232 + extra, HLine, HPlate);
-            g.Text($"WEEK {S.Week:00}", 192, 80, HInk, 2, 2);
-            HudRows(g, 192, 448, 120, rows.ToArray());
-            g.Rect(192, 224 + extra, 256, 2, HLine);
-            HudButton(g, 192, 240 + extra, 256, "NEXT WEEK", true);
         }
 
         void EndCard(Canvas8 g)
@@ -502,7 +488,7 @@ namespace NoWinners
         {
             var c = Room.Clock;
             bool on = game.Live && Result == null;
-            int left = Mathf.CeilToInt(Prefs.Target - game.LiveSeconds);
+            int left = Mathf.CeilToInt(Config.Target - game.LiveSeconds);
             c.Fill(H("#080808"));
             c.Centred(on ? "ON AIR" : "OFF AIR", 6, H(on ? "#ff3b2f" : "#8a8a90"));
             c.Centred(!on ? "--" : left > 0 ? $"{left:00}" : "LATE", 24, H(on && left <= 5 ? "#ff3b2f" : "#ffd23a"), 4 - (on && left <= 0 ? 1 : 0));
@@ -528,20 +514,78 @@ namespace NoWinners
                 bool show = i < n && !game.Played.Contains(i);
                 card.gameObject.SetActive(show);
                 if (!show) continue;
-                card.position = new Vector3((i - (n - 1) / 2f) * Room.CardStep, Room.CardBaseY, Room.CardZ);
-                PunchCard(Room.CardFaces[i], S.Hand[i], game.CanPlay(i));
+                PunchCard(Room.CardFaces[i], S.Hand[i], game.CanPlay(i) || (game.Punching >= 0 && !S.Hand[i].IsSpecial));
             }
         }
 
-        // Punch-card fiction, decided in GDD section 11.
+        // The rack: specials wait here until re-punched. The picked one is framed.
+        void DrawRack()
+        {
+            for (int i = 0; i < Room.Rack.Length; i++)
+            {
+                bool show = i < S.Rack.Count;
+                Room.Rack[i].gameObject.SetActive(show);
+                if (!show) continue;
+                PunchCard(Room.RackFaces[i], S.Rack[i], !game.Live && Result == null);
+                if (game.Punching == i) { Room.RackFaces[i].Frame(0, 0, 128, 176, H("#FFD23A"), 8); Room.RackFaces[i].Apply(); }
+            }
+        }
+
+        // The printer's slip: on the desk while it's offered, on the monitor's edge once taken.
+        void DrawSlip()
+        {
+            var slip = S.Pinned != Slip.None ? S.Pinned : S.Offer;
+            Room.Slip.gameObject.SetActive(slip != Slip.None && Result == null);
+            if (slip == Slip.None) return;
+            bool pinned = S.Pinned != Slip.None;
+            Room.Slip.localScale = new Vector3(.2f, Room.SlipH, 1) * (pinned ? Room.SlipPinnedScale : 1);
+            if (pinned) Room.Slip.SetPositionAndRotation(Room.SlipPinned, Room.SlipPinnedTurn);
+            else Room.Slip.rotation = Room.SlipRestTurn; // Game.Update rises it out of the reader.
+            Color32 ink = H("#1C1E28"), red = H("#B3241C"), dim = H("#8A7F60");
+            var c = Room.SlipPaper;
+            c.Fill(H("#F4EFD8"));
+            for (int y = 0; y < c.H; y += 12) { c.Rect(0, y, 3, 6, H("#C9C0A0")); c.Rect(c.W - 3, y, 3, 6, H("#C9C0A0")); } // Tractor-feed holes.
+            string name = Slips.Name(slip);
+            c.Centred(name, 8, red, name.Length > 9 ? 1 : 2, 2);
+            c.Rect(8, 30, c.W - 16, 1, dim);
+            int at = 36;
+            foreach (var (label, text) in new[] { ("WANTS", Slips.Wants(slip)), ("PAYS", Slips.Pays(slip)), ("MISS", Slips.Fails(slip)) })
+            {
+                c.Text(label, 8, at, dim); at += 11;
+                foreach (var line in Wrap(text, 18)) { c.Text(line, 8, at, ink); at += 11; }
+                at += 2;
+            }
+            if (pinned) { c.Frame(36, 156, 88, 26, red, 2); c.Centred("TAKEN", 165, red); }
+            else
+            {
+                c.Chip(8, 154, 68, 30, H("#2E7D4F")); c.Centred("TAKE", 161, H("#F4EFD8"), 2, 2, 42);
+                c.Chip(84, 154, 68, 30, red); c.Centred("TEAR", 161, H("#F4EFD8"), 2, 2, 118);
+            }
+            c.Apply();
+        }
+
+        static IEnumerable<string> Wrap(string text, int width)
+        {
+            string line = "";
+            foreach (var word in text.Split(' '))
+            {
+                if (line.Length > 0 && line.Length + 1 + word.Length > width) { yield return line; line = ""; }
+                line = line.Length == 0 ? word : line + " " + word;
+            }
+            if (line.Length > 0) yield return line;
+        }
+
+        // Punch-card fiction, decided in GDD section 11. Specials are on blue stock, so they read at a glance.
         static void PunchCard(Canvas8 c, Card card, bool ok)
         {
+            bool sp = card.IsSpecial;
             Color32 ink = H(ok ? "#2a2010" : "#4a4232"), hole = H(ok ? "#5a4420" : "#3a3424");
-            c.Fill(H(ok ? "#D9C79A" : "#7a7058"));
-            c.Rect(0, 0, 16, 16, H("#6b4a2e"));
-            c.Centred("CORRECT", 12, ink);
-            string label = card.ToString();
-            c.Centred(label, 52, ink, 4);
+            c.Fill(H(sp ? (ok ? "#9CC3E0" : "#55687a") : ok ? "#D9C79A" : "#7a7058"));
+            c.Rect(0, 0, 16, 16, H(sp ? "#1A2AA8" : "#6b4a2e"));
+            c.Centred(sp ? "SPECIAL" : "CORRECT", 12, ink);
+            string label = sp ? card.Name : card.ToString();
+            if (sp) { c.Centred(label, label.Length > 4 ? 44 : 36, ink, label.Length > 4 ? 2 : 3, 3); if (card.Arg.Length > 0) c.Centred(card.Arg, 70, ink, 3); }
+            else c.Centred(label, 52, ink, 4);
             int seed = label[0] + label[1];
             for (int x = 0; x < 7; x++)
                 for (int y = 0; y < 3; y++)

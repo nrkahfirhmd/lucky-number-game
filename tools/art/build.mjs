@@ -393,6 +393,13 @@ make('card_reader', (m) => {
   m.taper(0, 0.084, -0.03, 0.15, 0.02, 0.05, 0.15, 0.03, 'metalLight', undefined, -0.01); // Back rest for the card going in.
   m.box(-0.055, 0.015, 0.066, 0.1, 0.03, 0.002, 'nearBlack');
 });
+// A small wooden rack under the monitor's chin, for the special cards. Cards lean back on its rail; poses come from code.
+make('card_rack', (m) => {
+  m.box(0, 0, 0, 0.27, 0.012, 0.06, 'deskEdge');
+  m.box(0, 0.012, 0.022, 0.26, 0.008, 0.008, 'deskDark'); // Front lip the cards stand on.
+  m.at([0, 0.012, -0.018], { rotX: -0.42 }, () => m.box(0, 0, 0, 0.26, 0.026, 0.006, 'deskDark')); // Back rail, low so it never reads as a block.
+  m.box(0, 0.003, 0.031, 0.08, 0.008, 0.001, 'brass'); // Name plate.
+});
 make('card_reader_lamp', (m) => m.box(0, 0, 0, 0.022, 0.012, 0.01, 'ledRed', 'glow'));
 make('clock', (m) => {
   m.box(0, 0, 0, 0.26, 0.15, 0.1, 'nearBlack');
@@ -433,9 +440,10 @@ make('desk_plates', (m) => {
     m.at([x, 0.04, z], { rotX: -0.5 }, () => m.plane(0, 0, 0.001, w, h, 'plates', { uv: row(PLATES.indexOf(label)) }));
   });
   // Desk actions are explained on the staff notice, so only the controls keep a label.
-  place('GO LIVE', 0.55, 0.005, 0.15, 0.025);
-  place('EJECT', -0.53, 0.28, 0.12, 0.02);
-  place('ROLL IT', 0.6, 0.3, 0.17, 0.032);
+  // Two matching clusters: cards on the left (reader, eject), the show on the right (switch, red button).
+  place('GO LIVE', 0.56, 0.005, 0.15, 0.025);
+  place('EJECT', -0.52, 0.2, 0.12, 0.02);
+  place('ROLL IT', 0.52, 0.3, 0.17, 0.032);
 });
 
 // ---- Where things go. Same positions as desk.html: right-handed, player looks along -Z ----
@@ -455,18 +463,19 @@ const layout = {
     Place('tv', [-4, 1.85, -0.8], Math.PI / 2),
     Place('machine_base', [3.1, 0, -1.4], -Math.PI / 2),
     Place('machine_dome', [3.1, 0, -1.4], -Math.PI / 2),
-    // Nothing sits in front of the monitor except the card hand, so the board is never covered.
-    // Left of the monitor, on air: card reader with eject in front.
-    Place('card_reader', [-0.54, DESK_TOP, -2.95]),
-    Place('card_reader_lamp', [-0.47, DESK_TOP + 0.05, -2.884]),
-    Place('undo_button_base', [-0.53, DESK_TOP, -2.72]),
-    Place('undo_button_cap', [-0.53, DESK_TOP + 0.018, -2.72]),
-    Place('mug', [-0.9, DESK_TOP, -3.0]),
-    // Right of the monitor: the go-live switch with the red button in front, the on-air clock behind.
-    Place('switch_base', [0.55, DESK_TOP, -2.97]),
-    Place('switch_lever', [0.55, DESK_TOP + 0.028, -2.97]),
-    Place('big_button_base', [0.6, DESK_TOP, -2.72]),
-    Place('big_button_cap', [0.6, DESK_TOP + 0.015, -2.72]),
+    // Nothing sits in front of the monitor except the card hand and the low special-card rack, so the board is never covered.
+    // Left of the monitor: the card reader, which also prints the week's slip, with eject in front. Mug tucked behind.
+    Place('card_reader', [-0.56, DESK_TOP, -3.0]),
+    Place('card_reader_lamp', [-0.49, DESK_TOP + 0.05, -2.934]),
+    Place('undo_button_base', [-0.52, DESK_TOP, -2.8]),
+    Place('undo_button_cap', [-0.52, DESK_TOP + 0.018, -2.8]),
+    Place('mug', [-0.78, DESK_TOP, -3.08]),
+    Place('card_rack', [-0.3, DESK_TOP, -2.885]),
+    // Right of the monitor, mirroring the left: the go-live switch with the red button in front, the on-air clock behind.
+    Place('switch_base', [0.56, DESK_TOP, -2.97]),
+    Place('switch_lever', [0.56, DESK_TOP + 0.028, -2.97]),
+    Place('big_button_base', [0.52, DESK_TOP, -2.72]),
+    Place('big_button_cap', [0.52, DESK_TOP + 0.015, -2.72]),
     Place('clock', [0.72, DESK_TOP, -3.22], -0.35),
     // Pushed to the desk's corner and turned inward, so it frames the calendar rather than covering it.
     Place('lamp', [-0.88, DESK_TOP, -2.72], 1.2),

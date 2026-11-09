@@ -10,15 +10,13 @@ namespace NoWinners
 {
     public enum Mode { Start, Title, Play, Paused, Settings }
 
-    // Player settings, kept in PlayerPrefs. The game is fully playable at CRT 0.
+    // Player settings, kept in PlayerPrefs.
     public static class Prefs
     {
-        public static float Crt = 1, Volume = .8f;
-        public static bool ReduceMotion, Long;
-        // ponytail: the handoff names LONG without a number; 30 s is a guess, tune at playtest.
-        public static float Target => Long ? 30 : Config.Target;
-        public static void Load() { Crt = PlayerPrefs.GetFloat("crt", 1); Volume = PlayerPrefs.GetFloat("volume", .8f); ReduceMotion = PlayerPrefs.GetInt("reduceMotion") == 1; Long = PlayerPrefs.GetInt("longTarget") == 1; }
-        public static void Save() { PlayerPrefs.SetFloat("crt", Crt); PlayerPrefs.SetFloat("volume", Volume); PlayerPrefs.SetInt("reduceMotion", ReduceMotion ? 1 : 0); PlayerPrefs.SetInt("longTarget", Long ? 1 : 0); PlayerPrefs.Save(); }
+        public static float Volume = .8f;
+        public static bool ReduceMotion;
+        public static void Load() { Volume = PlayerPrefs.GetFloat("volume", .8f); ReduceMotion = PlayerPrefs.GetInt("reduceMotion") == 1; }
+        public static void Save() { PlayerPrefs.SetFloat("volume", Volume); PlayerPrefs.SetInt("reduceMotion", ReduceMotion ? 1 : 0); PlayerPrefs.Save(); }
     }
 
     public class WeekResult
@@ -27,6 +25,8 @@ namespace NoWinners
         public int Number, From, Cards, CashBefore, StreakBefore;
         public string Route, Line;
         public List<Card> Path, BestPath; // Copied at air time: the hand is trimmed right after.
+        public List<int> Steps; // The number after each played card. JAM and REDRAW are random, so they're kept, not recomputed.
+        public List<Card> Unused; // Re-punched specials that weren't played: destroyed.
         public Route Best;
         public Announced Air;
         public bool Revealed;
@@ -57,6 +57,12 @@ namespace NoWinners
         public float LandedAt = -100; // The last card landed: the monitor rolls its digits from here.
         public Run S { get; private set; }
         public readonly List<int> Played = new List<int>();
+        public string Banner { get; private set; } // A short headline band: "WEEK 3", "ON AIR".
+        public float BannerAt { get; private set; } = -100;
+        void Headline(string text) { Banner = text; BannerAt = Time.time; }
+        public readonly List<int> Landed = new List<int>(); // The number after each played card, in order.
+        public int Punching { get; private set; } = -1; // The rack slot picked at the card punch, waiting for a hand card.
+        public int PreviewRow { get; private set; } = -1; // JAM's preview: the whole row it could land in.
         public WeekResult Result { get; private set; }
         public int Preview { get; private set; } = -1;
         public bool Live { get; private set; }
@@ -65,11 +71,10 @@ namespace NoWinners
         public string Station { get; private set; } = "monitor";
         public Room Room { get; private set; }
         public Sfx Sfx { get; private set; }
-        public string Notice = "";
         public float RolledAt = -100, LiveAt;
         public bool Drawn => Live && Time.time >= LiveAt; // The number exists, and cards can be played.
         public float LiveSeconds => Mathf.Max(0, Time.time - LiveAt);
-        public int Value => Played.Aggregate(S.Roll ?? 0, (v, i) => Run.Apply(v, S.Hand[i]).Value);
+        public int Value => Landed.Count > 0 ? Landed[Landed.Count - 1] : S.Roll ?? 0;
         public bool Busy { get; private set; }
 
         Screens screens;
@@ -78,12 +83,20 @@ namespace NoWinners
         Vector3 camPos = Eye, camLook = LookMonitor;
         Vector2 pointer;
         bool lean, wasDrawn;
+        int feeding = -1, hoverCard = -1; // The card flying into the reader, and the one under the pointer.
+        readonly bool[] cardOut = new bool[Room.CardCount]; // Shown last frame: a card that just appeared snaps into place.
+        // Focus (space): the hand fans along the bottom of the screen, in front of the leaned-in camera.
+        public bool Focus => lean && Station == "monitor" && Mode == Mode.Play && Result == null;
         float offAt, lastDraw = -100, pressedAt = -100;
+        int punched; // Re-punches this week, for the log.
+        float slipAt; // When the reader started printing the slip on the desk.
+        bool slipOut;
         string hover;
         public string HoverText => hover;
         public int CalendarWeek { get; private set; } // The week tile pointed at in the calendar close-up, or 0.
         string runId, logPath;
         public static bool KeepLog = true;
+        public static string LogFile = "weeks-v2.csv"; // v2 columns: a new file, so old logs stay readable. Tests point it elsewhere.
 
         void Awake()
         {
@@ -94,9 +107,9 @@ namespace NoWinners
             cam.backgroundColor = Color.black;
             Room = new Room();
             screens = new Screens(this);
-            logPath = Path.Combine(Application.persistentDataPath, "weeks.csv");
+            logPath = Path.Combine(Application.persistentDataPath, LogFile);
             Prefs.Load();
-            Room.SetCrt(Prefs.Crt);
+            Room.SetCrt(1); // Full CRT, always: no longer a setting.
             Sfx = gameObject.AddComponent<Sfx>();
             StartRun();
             Mode = Mode.Start; // The TV title card, then the menu on the monitor.
@@ -112,9 +125,9 @@ namespace NoWinners
         public void OpenSettings() { SettingsFrom = Mode; SetMode(Mode.Settings); }
         public void CloseSettings() { Prefs.Save(); SetMode(SettingsFrom); }
 
-        public void SetCrt(float v) { Prefs.Crt = Mathf.Clamp01(Mathf.Round(v * 20) / 20); Room.SetCrt(Prefs.Crt); }
         public void SetVolume(float v) => Prefs.Volume = Mathf.Clamp01(Mathf.Round(v * 20) / 20);
-        public const int SettingRows = 4; // CRT, volume, reduce motion, on-air target. BACK comes after.
+        public const int SettingRows = 2; // Volume, reduce motion. BACK comes after.
+        public const int BackY = 180; // Settings BACK button, on the monitor. Screens.SettingsPanel draws the same layout.
 
         // Menu buttons, top to bottom, for whichever menu is up. Empty when none is.
         System.Action[] Buttons()
@@ -128,10 +141,8 @@ namespace NoWinners
         // Settings rows: left/right or a click changes the focused one.
         void Nudge(int dir)
         {
-            if (Sel == 0) SetCrt(Prefs.Crt + dir * .1f);
-            else if (Sel == 1) SetVolume(Prefs.Volume + dir * .1f);
-            else if (Sel == 2) Prefs.ReduceMotion = dir > 0;
-            else if (Sel == 3) Prefs.Long = dir > 0;
+            if (Sel == 0) SetVolume(Prefs.Volume + dir * .1f);
+            else if (Sel == 1) Prefs.ReduceMotion = dir > 0;
         }
 
         public bool EndCardUp => Result != null && S.Over != Ending.None
@@ -172,16 +183,12 @@ namespace NoWinners
                 return;
             }
             // Settings: rows every 64 px from y 44, BACK below them. Screens.SettingsPanel draws the same layout.
-            if (In(m, 352, 300, 272, 32)) { CloseSettings(); return; }
+            if (In(m, 352, BackY, 272, 32)) { CloseSettings(); return; }
             for (int row = 0; row < SettingRows; row++)
                 if (In(m, 352, 44 + row * 64, 272, 56)) Sel = row;
-            if (In(m, 364, 64, 176, 32)) SetCrt((m.x - 364) / 176f);
-            if (In(m, 364, 128, 176, 32)) SetVolume((m.x - 364) / 176f);
+            if (In(m, 364, 64, 176, 32)) SetVolume((m.x - 364) / 176f);
             for (int i = 0; i < 2; i++)
-            {
-                if (In(m, 364 + i * 80, 196, 72, 24)) Prefs.ReduceMotion = i == 1;
-                if (In(m, 364 + i * 112, 260, 104, 24)) Prefs.Long = i == 1;
-            }
+                if (In(m, 364 + i * 80, 132, 72, 24)) Prefs.ReduceMotion = i == 1;
         }
 
         void MenuKeys(Keyboard keys)
@@ -205,14 +212,8 @@ namespace NoWinners
         // ---- The week ----
         public void StartRun() { S = new Run(); S.ShuffleDates(); Sel = 0; runId = DateTime.Now.ToString("yyyyMMdd-HHmmss"); NextWeek(); }
 
-        // The phone, a week before each special date. Also on the calendar from week 1.
+        // A list of numbers for the calendar: "07, 23 or 61".
         public static string Numbers(IEnumerable<int> ns) { var s = ns.Select(n => n.ToString("00")).ToList(); return s.Count < 2 ? string.Join("", s) : string.Join(", ", s.Take(s.Count - 1)) + " or " + s[s.Count - 1]; }
-
-        public static string DateCall(Special d, IEnumerable<int> nephews) =>
-            d == Special.Payday ? $"PHONE: \"Payday next week. Double tickets, double cash. The board fills twice as fast.\""
-            : d == Special.Telethon ? $"PHONE: \"Telethon next week. Prize x{Config.TelethonPrize}, and x{Config.TelethonLive} bonus if you're on time.\""
-            : d == Special.Nephew ? $"PHONE: \"Minister here. My nephew has {Numbers(nephews)}. Next week, one of those wins. +{Config.NephewReward} for you.\""
-            : "";
 
         // What a week on the calendar means, for the close-up's hover.
         public string WeekInfo(int w)
@@ -228,21 +229,22 @@ namespace NoWinners
             return $"WEEK {w}{when}: {what}";
         }
 
+        // What a special card does, for hover text.
+        public static string Explain(Card c) => c.Op == 'S' ? "swap the two digits. Not on 00, 11 ... 99"
+            : c.Op == 'M' ? "99 minus the number: jump to the opposite side" : c.Op == 'T' ? $"tens digit {c.Arg}, straight along the column"
+            : c.Op == 'W' ? "copy the tens digit to the units: 47 becomes 44" : c.Op == 'R' ? $"add {c.X}, wrapping past 99 to 00"
+            : c.Op == 'J' ? "redraw the units ball at random" : c.Op == 'D' ? "the machine draws a whole new number" : "";
+
         public static string DateName(Special d) => d == Special.Payday ? "PAYDAY" : d == Special.Telethon ? "TELETHON" : d == Special.Nephew ? "NEPHEW" : "";
 
         void NextWeek()
         {
-            Notice = "";
-            Live = false; Stall = -1; Shredding = false; Result = null; Preview = -1;
+            Live = false; Stall = -1; Shredding = false; Result = null; Preview = -1; PreviewRow = -1; Punching = -1; punched = 0;
             Played.Clear();
+            Landed.Clear();
             offAt = Time.time;
             S.StartWeek();
-            if (S.Week == 2) Notice = "NOTE ON DESK: \"Off air you get one favour a week. Supplier, bribe or shredder, on the side table. Look right.\"";
-            if (S.Week == Config.Inspections[0] - 1) Notice = "PHONE: \"Inspectors next week. One card, no more. It's on the calendar.\"";
-            if (S.Next != Special.None) Notice = $"{Notice} {DateCall(S.Next, S.Nephews)}".Trim();
-            if (S.Today == Special.Payday) Notice = $"{Notice} PAYDAY: {S.Sold} tickets sold, twice the usual. Count the cash, then look at the board.".Trim();
-            if (S.Today == Special.Telethon) Notice = $"{Notice} TELETHON: prize x{Config.TelethonPrize} tonight, and +{S.LiveBonus} if you announce on time.".Trim();
-            if (S.Today == Special.Nephew) Notice = $"{Notice} NEPHEW: make {Numbers(S.Nephews)} win for +{Config.NephewReward}. It counts as a small winner, even untouched.".Trim();
+            Headline($"WEEK {S.Week}");
             Station = "monitor";
             Refresh();
         }
@@ -251,10 +253,7 @@ namespace NoWinners
         {
             if (Live || Result != null || S.Acted != null) { Sfx.Play("desk_denied"); return; }
             if (action == DeskAction.Shred) { Shredding = !Shredding; if (Shredding) Look("monitor"); Refresh(); return; } // Aim it at the board.
-            int lost = S.LostCards;
-            S.TakeAction(action);
-            Notice = action == DeskAction.Bribe ? $"Minister's envelope: +{Config.Bribe} cash. The prize is now {S.Prize} a holder."
-                : S.LostCards > lost ? "SUPPLIER: \"Your hand's full, boss. That one's gone.\"" : "SUPPLIER: \"One card. You never saw me.\"";
+            if (!S.TakeAction(action)) { Sfx.Play("desk_denied"); return; }
             Refresh();
         }
 
@@ -262,23 +261,49 @@ namespace NoWinners
         {
             if (!S.TakeAction(DeskAction.Shred, n)) return;
             Shredding = false; Preview = -1;
-            Notice = $"Shredded. {n:00} now has {(S.Board[n] > 0 ? Screens.Holders(S.Board[n]) : "no holders")}.";
+            Refresh();
+        }
+
+        // The card punch: pick a special in the rack, then the arithmetic card it replaces. Off air only.
+        public void PickRack(int r)
+        {
+            if (Live || Result != null || r >= S.Rack.Count) { Sfx.Play("desk_denied"); return; }
+            Punching = Punching == r ? -1 : r;
+            Shredding = false;
+            Refresh();
+        }
+
+        public void Repunch(int hand)
+        {
+            if (!S.Repunch(hand, Punching)) { Sfx.Play("desk_denied"); return; }
+            Punching = -1;
+            punched++;
+            Refresh();
+        }
+
+        // The printer's slip: TAKE pins it, TEAR throws it away.
+        public void Printer(bool take)
+        {
+            if (Live || Result != null || !(take ? S.TakeSlip() : S.TearSlip())) { Sfx.Play("desk_denied"); return; }
             Refresh();
         }
 
         public void GoLive()
         {
             if (Live || Result != null) return;
+            S.TearSlip(); // An unread slip goes in the bin.
+            S.TakeAction(DeskAction.LieLow); // No desk action: you lay low.
             S.DrawNumber();
             if (firstRun) { S.SeedRoll(); firstRun = false; }
-            Live = true; Shredding = false; Preview = -1; Notice = "";
+            Live = true; Shredding = false; Preview = -1; Punching = -1;
+            Headline("ON AIR");
             RolledAt = Time.time;
             LiveAt = RolledAt + LockSeconds;
             Refresh();
         }
 
         public bool CanPlay(int i) => Drawn && Result == null && !Busy && i < S.Hand.Count && !Played.Contains(i)
-            && Played.Count < Run.CardLimit(S.Week) && Run.Apply(Value, S.Hand[i]) != null;
+            && Played.Count < Run.CardLimit(S.Week) && Run.CanApply(Value, S.Hand[i]);
 
         public void PlayCard(int i)
         {
@@ -290,6 +315,7 @@ namespace NoWinners
         IEnumerator FeedReader(int i)
         {
             Busy = true;
+            feeding = i;
             var card = Room.Cards[i];
             Vector3 from = card.position, scale = card.localScale;
             Quaternion rot = card.rotation, flat = Quaternion.identity;
@@ -308,6 +334,8 @@ namespace NoWinners
             card.SetPositionAndRotation(from, rot);
             card.localScale = scale;
             Busy = false;
+            feeding = -1;
+            Landed.Add(S.Resolve(Value, S.Hand[i])); // JAM and REDRAW roll here, once.
             Played.Add(i);
             LandedAt = Time.time;
             Preview = -1;
@@ -317,7 +345,9 @@ namespace NoWinners
         public void Undo()
         {
             if (Result != null || Busy || Played.Count == 0) return;
+            if (S.Hand[Played[Played.Count - 1]].IsRandom) { Sfx.Play("desk_denied"); return; } // The ball's already out.
             Played.RemoveAt(Played.Count - 1);
+            Landed.RemoveAt(Landed.Count - 1);
             Refresh();
         }
 
@@ -342,7 +372,6 @@ namespace NoWinners
         // The number goes out. Everything the reveal and the log need is read before announcing changes it.
         void Air()
         {
-            Notice = "";
             var best = S.BestRoute();
             int from = S.Roll.Value, number = Value, rate = S.Prize;
             float seconds = LiveSeconds;
@@ -353,14 +382,15 @@ namespace NoWinners
                 Route = string.Join(" ", Played.Select(i => S.Hand[i].ToString())),
                 Line = steps.Length > 0 ? $"{from:00} {steps} = {best.To:00}" : $"{from:00} AS DRAWN",
                 Path = Played.Select(i => S.Hand[i]).ToList(),
+                Steps = new[] { from }.Concat(Landed).ToList(),
                 BestPath = best.Path.Select(i => S.Hand[i]).ToList(),
                 CashBefore = S.Cash, StreakBefore = S.Streak, // Initialisers run in order, so these read before Announce.
-                Air = S.Announce(number, Played.Count, seconds <= Prefs.Target),
+                Air = S.Announce(number, Played.Count, seconds <= Config.Target, seconds),
             };
+            Result.Unused = S.Discard(Played); // Before Log, which reads it.
             Log(best, number, rate, seconds);
-            if (Result.Air.Tier == Tier.Clean && S.Cleans == 1) Notice = $"HOST: \"Nobody won! So next week's prize grows to {S.Prize} a winner!\"";
-            S.Hand = S.Hand.Where((_, i) => !Played.Contains(i)).ToList();
             Played.Clear();
+            Landed.Clear();
             Station = "tv";
             Refresh();
         }
@@ -371,8 +401,8 @@ namespace NoWinners
             if (!KeepLog) return;
             try
             {
-                if (!File.Exists(logPath)) File.WriteAllText(logPath, "run,week,desk,offAirSeconds,roll,final,cards,cleanRoute,holders,result,prize,cash,onAirSeconds,special\n");
-                File.AppendAllText(logPath, $"{runId},{S.Week},{S.Acted},{LiveAt - LockSeconds - offAt:0},{Result.From},{number},{Result.Cards},{best.Cost <= 0},{Result.Air.Holders},{Result.Air.Tier},{rate},{S.Cash},{seconds:0},{S.Today}\n");
+                if (!File.Exists(logPath)) File.WriteAllText(logPath, "run,week,desk,offAirSeconds,roll,final,cards,cleanRoute,holders,result,prize,cash,onAirSeconds,special,slip,slipMet,repunched,unused\n");
+                File.AppendAllText(logPath, $"{runId},{S.Week},{S.Acted},{LiveAt - LockSeconds - offAt:0},{Result.From},{number},{Result.Cards},{best.Cost <= 0},{Result.Air.Holders},{Result.Air.Tier},{rate},{S.Cash},{seconds:0},{S.Today},{Result.Air.Slip},{Result.Air.SlipMet},{punched},{Result.Unused.Count}\n");
             }
             catch (IOException e) { Debug.LogWarning($"Week log not written: {e.Message}"); }
         }
@@ -381,11 +411,10 @@ namespace NoWinners
         void CheckStall()
         {
             if (!Live || Result != null) return;
-            float over = LiveSeconds - Prefs.Target;
+            float over = LiveSeconds - Config.Target;
             int i = over < 0 ? -1 : Mathf.FloorToInt(over / Config.StallEvery);
             if (i == Stall) return;
             Stall = i;
-            if (i >= 0) Notice = Stalls[i % Stalls.Length][1];
             Refresh();
         }
 
@@ -397,9 +426,18 @@ namespace NoWinners
             CheckStall();
             if (Time.unscaledTime - lastDraw > .1f) { screens.DrawTimed(); lastDraw = Time.unscaledTime; }
             AnimateMachine();
+            bool printing = Room.Slip.gameObject.activeSelf && S.Pinned == Slip.None;
+            if (printing && !slipOut) slipAt = Time.time; // A new slip: start printing it.
+            slipOut = printing;
+            if (printing) // The slip rises out of the reader's slot.
+            {
+                float k = Prefs.ReduceMotion ? 1 : Mathf.SmoothStep(0, 1, (Time.time - slipAt - .4f) / 1.4f);
+                Room.Slip.position = Room.SlipRest - Room.Slip.up * (1 - k) * Room.SlipH;
+            }
             Room.GoCap.position = Room.GoRest + (Time.time - pressedAt < .2f ? Vector3.down * .015f : Vector3.zero);
             Room.Lever.localEulerAngles = new Vector3(Live ? -34 : 34, 0, 0);
             MoveCamera();
+            LayoutCards();
         }
 
         public void Look(string station) => Station = station;
@@ -413,7 +451,8 @@ namespace NoWinners
                 if (Mode == Mode.Settings) CloseSettings();
                 else if (Mode == Mode.Paused) Resume();
                 else if (Mode == Mode.Play && Shredding) { Shredding = false; Refresh(); }
-                else if (Mode == Mode.Play && Station == "calendar") Look("monitor");
+                else if (Mode == Mode.Play && Punching >= 0) { Punching = -1; Refresh(); }
+                else if (Mode == Mode.Play && (Station == "calendar" || Station == "slip")) Look("monitor");
                 else Pause();
             }
             else if (keys != null && Mode == Mode.Start) { if (keys.anyKey.wasPressedThisFrame) SetMode(Mode.Title); }
@@ -459,24 +498,45 @@ namespace NoWinners
         {
             Collider c = null;
             var point = default(Vector3);
-            if ((Station == "monitor" || Station == "machine" || Station == "calendar") && Result == null) c = Pick(at, out point);
+            if ((Station == "monitor" || Station == "machine" || Station == "calendar" || Station == "slip") && Result == null) c = Pick(at, out point);
             int week = Station == "calendar" && c == Room.CalendarPaper ? CalendarAt(point) : 0;
             if (week != CalendarWeek) { CalendarWeek = week; Refresh(); }
             int preview = Shredding ? SquareAt(c, point) : -1;
             hover = null;
             int over = c == null ? -1 : Array.FindIndex(Room.Cards, t => t.GetComponent<Collider>() == c);
-            for (int i = 0; i < Room.CardCount; i++)
-                if (!Busy && Room.Cards[i].gameObject.activeSelf)
-                    Room.Cards[i].position = new Vector3(Room.Cards[i].position.x, Room.CardBaseY + (i == over && CanPlay(i) ? .02f : 0), Room.CardZ);
-            if (over >= 0 && CanPlay(over)) preview = Run.Apply(Value, S.Hand[over]).Value;
-            if (preview != Preview) { Preview = preview; lastDraw = -100; }
+            int rack = c == null ? -1 : Array.FindIndex(Room.Rack, t => t.GetComponent<Collider>() == c);
+            hoverCard = over;
+            int row = -1;
+            if (over >= 0 && CanPlay(over))
+            {
+                var k = S.Hand[over];
+                if (k.Op == 'J') row = Value / 10;
+                else if (!k.IsRandom) preview = Run.Apply(Value, k).Value;
+            }
+            if (preview != Preview || row != PreviewRow) { Preview = preview; PreviewRow = row; lastDraw = -100; }
             if (week > 0) { hover = WeekInfo(week); return; }
             if (c == Room.CalendarPaper && Station != "calendar" && !Shredding) { hover = "CALENDAR: click to read it up close."; return; }
+            if (over >= 0 && S.Hand[over].IsSpecial) { hover = $"{S.Hand[over]}: {Explain(S.Hand[over])}."; return; }
+            if (rack >= 0 && rack < S.Rack.Count)
+            {
+                hover = $"RACK: {S.Rack[rack]}, {Explain(S.Rack[rack])}. " + (Live ? "Re-punch off air only." : "Click it, then the hand card it replaces. Unplayed tonight, it's gone.");
+                return;
+            }
+            if (c != null && c.transform == Room.Slip)
+            {
+                var slip = S.Pinned != Slip.None ? S.Pinned : S.Offer;
+                int button = Station == "slip" && S.Offer != Slip.None && !Live ? SlipButton(point) : 0;
+                hover = button == 1 ? $"TAKE: pin it to the monitor. {Slips.Wants(slip)} pays {Slips.Pays(slip)}; miss it and {Slips.Fails(slip)}."
+                    : button == 2 ? "TEAR: throw it away. Free."
+                    : Station == "slip" ? $"{Slips.Name(slip)}: {Slips.Quote(slip)} Wants {Slips.Wants(slip)}, pays {Slips.Pays(slip)}. Miss: {Slips.Fails(slip)}."
+                    : $"SLIP: {Slips.Name(slip)}. Click to read it up close.";
+                return;
+            }
             if (c == null || Live) return;
-            if (c == Room.LiveSwitch) hover = "GO LIVE: the machine draws, and you rig the number on air.";
-            else if (c == Room.ActionProps[DeskAction.Supplier]) hover = "SUPPLIER: +1 card, lost if your hand is full.";
-            else if (c == Room.ActionProps[DeskAction.Bribe]) hover = $"BRIBE: +{Config.Bribe} cash, but the prize rises {Config.Rollover} until your next scandal.";
-            else if (c == Room.ActionProps[DeskAction.Shred]) hover = $"SHRED: remove up to {Config.Shred} holders from one square.";
+            if (c == Room.LiveSwitch) hover = "GO LIVE: the machine draws, and you rig the number on air." + (S.Acted == null ? $" No desk action yet: you'll lie low, prize -{Config.LieLow}." : "");
+            else if (c == Room.ActionProps[DeskAction.Supplier]) hover = $"SUPPLIER: +1 card for {Config.SupplierCost} cash. Paid even if a full hand loses the card.";
+            else if (c == Room.ActionProps[DeskAction.Bribe]) hover = $"BRIBE: +{Config.Bribe} cash, but the prize rises {Config.Rollover} for the rest of the run.";
+            else if (c == Room.ActionProps[DeskAction.Shred]) hover = "SHRED: clear one square. Its holders rebuy next door, either side in the same row.";
         }
 
         // Public so a test can click real props through the real raycast.
@@ -487,6 +547,14 @@ namespace NoWinners
             if (Mode != Mode.Play || EndCardUp) { ClickMenu(at); return; }
             if (Result != null) { Go(); return; }
             if (Station == "calendar") { Look("monitor"); return; } // Any click puts it down.
+            if (Station == "slip") // Up close: TAKE or TEAR on the slip; anywhere else puts it down.
+            {
+                var hit = Pick(at, out var on);
+                int button = hit != null && hit.transform == Room.Slip && S.Offer != Slip.None && !Live ? SlipButton(on) : 0;
+                if (button > 0) Printer(button == 1);
+                Look("monitor");
+                return;
+            }
             if (Station != "monitor" && Station != "machine") return;
             var c = Pick(at, out var point);
             if (c == null) return;
@@ -497,8 +565,54 @@ namespace NoWinners
             if (c == Room.UndoButton) { Undo(); return; }
             if (c == Room.LiveSwitch) { GoLive(); return; }
             foreach (var kv in Room.ActionProps) if (c == kv.Value) { TakeAction(kv.Key); return; }
+            int rack = Array.FindIndex(Room.Rack, t => t.GetComponent<Collider>() == c);
+            if (rack >= 0) { PickRack(rack); return; }
+            if (c.transform == Room.Slip) { Look("slip"); return; } // Read it up close first, like the calendar.
             int card = Array.FindIndex(Room.Cards, t => t.GetComponent<Collider>() == c);
-            if (card >= 0) PlayCard(card);
+            if (card >= 0 && Punching >= 0) Repunch(card);
+            else if (card >= 0) PlayCard(card);
+        }
+
+        // Which button on the 160x192 slip a point is on: 1 TAKE, 2 TEAR, 0 neither. Screens.DrawSlip draws the same layout.
+        int SlipButton(Vector3 point)
+        {
+            var uv = Room.Slip.InverseTransformPoint(point);
+            int x = Mathf.FloorToInt((uv.x + .5f) * 160), y = Mathf.FloorToInt((.5f - uv.y) * 192);
+            return In(new Vector2Int(x, y), 8, 154, 68, 30) ? 1 : In(new Vector2Int(x, y), 84, 154, 68, 30) ? 2 : 0;
+        }
+
+        // Cards on the desk mat, or fanned along the bottom of the screen in focus. The pointed-at card lifts if it can be used.
+        void LayoutCards()
+        {
+            int n = S.Hand.Count;
+            float ease = 1 - Mathf.Exp(-Mathf.Min(Time.deltaTime, .05f) * 18);
+            for (int i = 0; i < Room.CardCount; i++)
+            {
+                var card = Room.Cards[i];
+                bool shown = card.gameObject.activeSelf, snap = shown && !cardOut[i];
+                cardOut[i] = shown;
+                if (!shown || i == feeding) continue;
+                bool up = Mode == Mode.Play && i == hoverCard && i < n && (CanPlay(i) || (Punching >= 0 && !S.Hand[i].IsSpecial));
+                float d = i - (n - 1) / 2f;
+                Vector3 pos, scale = Room.CardSize;
+                Quaternion rot;
+                if (Focus)
+                {
+                    // ponytail: 0.35 m from the eye keeps the fan in front of the monitor glass; 0.6 scale keeps the board's bottom row readable.
+                    var t = cam.transform;
+                    pos = t.TransformPoint(new Vector3(d * .075f, -.158f - d * d * .004f + (up ? .045f : 0), .35f + i * .0005f - (up ? .006f : 0)));
+                    rot = t.rotation * Quaternion.Euler(0, 0, up ? 0 : -d * 5);
+                    scale *= .6f;
+                }
+                else
+                {
+                    pos = new Vector3(d * Room.CardStep, Room.CardBaseY + (up ? .02f : 0), Room.CardZ);
+                    rot = Quaternion.Euler(Room.CardEuler);
+                }
+                float k = snap ? 1 : ease;
+                card.SetPositionAndRotation(Vector3.Lerp(card.position, pos, k), Quaternion.Slerp(card.rotation, rot, k));
+                card.localScale = Vector3.Lerp(card.localScale, scale, k);
+            }
         }
 
         // ---- Picture ----
@@ -527,9 +641,10 @@ namespace NoWinners
             string at = Mode == Mode.Start ? "tv" : menu ? "monitor" : Station;
             bool leaning = menu || (lean && at == "monitor" && Mode == Mode.Play);
             var paper = Room.CalendarPaper.transform.position; // Close-up: square on, near enough to fill the view.
-            bool calendar = at == "calendar";
+            bool slip = at == "slip", calendar = at == "calendar" || slip;
+            if (slip) paper = S.Pinned != Slip.None ? Room.SlipPinned : Room.SlipRest; // Its resting place, so the print-out doesn't drag the camera.
             Vector3 look = leaning ? LookLean : at == "tv" ? LookTv : at == "machine" ? LookMachine : calendar ? paper : LookMonitor;
-            camPos = Vector3.Lerp(camPos, leaning ? LeanEye : calendar ? paper + new Vector3(0, 0, -.68f) : Eye, ease);
+            camPos = Vector3.Lerp(camPos, leaning ? LeanEye : calendar ? paper + new Vector3(0, 0, slip ? -.34f : -.68f) : Eye, ease);
             camLook = Vector3.Lerp(camLook, look, ease);
             cam.fieldOfView = Mathf.Lerp(cam.fieldOfView, at == "tv" ? 26 : 50, ease);
             var sway = calendar ? Vector2.zero : pointer; // The close-up holds still, so the week under the pointer stays put.
@@ -537,17 +652,10 @@ namespace NoWinners
             cam.transform.LookAt(camLook + new Vector3(sway.x * .05f, sway.y * .03f, 0));
         }
 
-        string Hint()
-        {
-            if (Result != null) return $"{Notice} {(S.Over != Ending.None ? "" : !Result.Revealed ? "Click to see the board." : "Click anywhere for next week.")}".Trim();
-            if (Shredding) return "Click a square on the monitor to shred it. Esc to cancel.";
-            if (hover != null) return hover;
-            if (Station == "calendar") return "THE CALENDAR: point at a week to see what it means. Click or Esc to put it down.";
-            if (Notice.Length > 0) return Notice;
-            return Live ? "On air: rig the number with your cards, then press the red button." : "Off air, no clock. Look right for one desk action if you want, then flip GO LIVE.";
-        }
+        // Only what's under the pointer: notices and instructions were cut as noise.
+        string Hint() => hover ?? "";
 
-        // ponytail: plain IMGUI line for notes and stalls. Replace with notes on the desk at the Comedy milestone.
+        // ponytail: plain IMGUI line for hover text. Replace with tags on the props if it reads as clutter.
         GUIStyle hintStyle;
         void OnGUI()
         {
