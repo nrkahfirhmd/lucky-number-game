@@ -158,7 +158,7 @@ namespace NoWinners.Tests
 
             // Past the target: the show stalls, and nothing is forced.
             game.Click(At(game.Room.LiveSwitch));
-            game.LiveAt = Time.time - Config.Target - 1;
+            game.LiveAt = Time.time - Prefs.Target - 1; // Prefs: LONG may be saved on.
             yield return null;
             yield return null;
             Assert.AreEqual(0, game.Stall);
