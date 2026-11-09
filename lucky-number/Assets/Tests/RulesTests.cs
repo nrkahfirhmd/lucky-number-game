@@ -169,5 +169,120 @@ namespace NoWinners.Tests
             UnityEngine.Debug.Log($"GDD rules, saves-cards bot, no desk: wins {rate}% (GDD table: 65)");
             Assert.That(rate, Is.InRange(60, 70), "bot win rate drifted from the GDD");
         }
+
+        // ---- Special dates: docs/no-winners-offair-draft.md ----
+        [Test]
+        public void Dates_one_of_each_in_allowed_weeks()
+        {
+            for (int seed = 0; seed < 50; seed++)
+            {
+                var s = new Run(new Random(seed));
+                s.ShuffleDates();
+                foreach (var d in new[] { Special.Payday, Special.Telethon, Special.Nephew })
+                {
+                    int week = Array.IndexOf(s.Dates, d);
+                    Assert.AreEqual(week, Array.LastIndexOf(s.Dates, d), $"one {d} per run");
+                    Assert.Contains(week, Config.DateWeeks, $"{d} avoids week 1 and inspections");
+                }
+            }
+            Assert.IsTrue(new Run().Dates.All(d => d == Special.None), "no dates unless shuffled");
+        }
+
+        [Test]
+        public void Payday_doubles_tickets_and_cash()
+        {
+            var s = new Run(new Random(10));
+            s.Dates[2] = Special.Payday;
+            s.StartWeek();
+            int cash = s.Cash;
+            s.StartWeek();
+            Assert.AreEqual(66, s.Sold, "33 x 2");
+            Assert.AreEqual(cash + 66 * Config.TicketPrice, s.Cash);
+            Assert.AreEqual(30 + 66, s.Board.Sum(), "the board keeps them");
+        }
+
+        [Test]
+        public void Telethon_doubles_prize_and_live_bonus()
+        {
+            var s = new Run(new Random(11));
+            s.Dates[1] = Special.Telethon;
+            s.StartWeek();
+            Assert.AreEqual(240, s.Prize);
+            Assert.AreEqual(100, s.LiveBonus);
+            s.DrawNumber();
+            int free = Enumerable.Range(0, 100).First(n => s.Board[n] == 0), cash = s.Cash;
+            Assert.AreEqual(100, s.Announce(free, 1, true).Bonus);
+            Assert.AreEqual(cash + 100, s.Cash);
+            s.StartWeek();
+            Assert.AreEqual(160, s.Prize, "back to normal, with the streak");
+        }
+
+        [Test]
+        public void Nephew_is_called_early_and_pays_when_hit()
+        {
+            var s = new Run(new Random(12));
+            s.Dates[2] = Special.Nephew;
+            s.StartWeek();
+            Assert.AreEqual(Config.NephewNumbers, s.Nephews.Distinct().Count(), "picked the week before");
+            Assert.IsTrue(s.Nephews.All(v => s.Board[v] == 0), "from empty squares");
+            int n = s.Nephews[0];
+            Assert.AreEqual(Special.Nephew, s.Next);
+            s.StartWeek();
+            Assert.IsTrue(s.Nephews.All(v => s.Board[v] >= 1), "his own tickets");
+            s.Board[n] = 1;
+            int cash = s.Cash;
+            Assert.AreEqual(Config.Prize - Config.NephewReward, s.CostOf(n, 0), "net cost, untouched still counts");
+            var a = s.Announce(n, 0, false);
+            Assert.AreEqual((Tier.Small, Config.NephewReward, Config.Prize), (a.Tier, a.Reward, a.Pay));
+            Assert.AreEqual(cash + Config.NephewReward - Config.Prize, s.Cash);
+
+            s = new Run(new Random(12));
+            s.Dates[2] = Special.Nephew;
+            s.StartWeek(); s.StartWeek();
+            int free = Enumerable.Range(0, 100).First(v => s.Board[v] == 0);
+            Assert.AreEqual(0, s.Announce(free, 1, false).Reward, "a miss: no reward, no penalty");
+            s.Board[s.Nephews[1]] = 5;
+            Assert.AreEqual(Tier.Scandal, s.TierAt(s.Nephews[1], 1), "a crowded nephew square is still a scandal");
+        }
+
+        // The bot run the draft asks for: how often the nephew's number is reachable, and what dates do to the win rate.
+        [Test]
+        public void Bot_with_dates()
+        {
+            const int games = 3000;
+            int reach = 0;
+            int Play(bool dates, out int hits, out int nephews)
+            {
+                var rng = new Random(13);
+                int wins = 0; hits = 0; nephews = 0;
+                for (int i = 0; i < games; i++)
+                {
+                    var g = new Run(rng);
+                    if (dates) g.ShuffleDates();
+                    while (g.Over == Ending.None)
+                    {
+                        g.StartWeek();
+                        g.DrawNumber();
+                        var plan = Run.Routes(g.Roll.Value, g.Hand, Run.CardLimit(g.Week))
+                            .OrderBy(kv => g.CostOf(kv.Key, kv.Value.Count) + kv.Value.Count * 60).First();
+                        if (g.Today == Special.Nephew)
+                        {
+                            nephews++;
+                            if (g.IsFavour(plan.Key)) hits++;
+                            if (Run.Routes(g.Roll.Value, g.Hand).Keys.Any(g.IsFavour)) reach++;
+                        }
+                        g.Announce(plan.Key, plan.Value.Count, true);
+                        g.Hand = g.Hand.Where((_, j) => !plan.Value.Contains(j)).ToList();
+                    }
+                    if (g.Over == Ending.Won) wins++;
+                }
+                return wins * 100 / games;
+            }
+            int plain = Play(false, out _, out _), withDates = Play(true, out int hit, out int tries);
+            int hitRate = hit * 100 / Math.Max(1, tries), reachRate = reach * 100 / Math.Max(1, tries);
+            UnityEngine.Debug.Log($"Dates bot: wins {withDates}% with dates, {plain}% without. Nephew reachable {reachRate}%, hit {hitRate}% of {tries} nephew weeks.");
+            Assert.That(withDates, Is.InRange(plain - 15, plain + 15), "dates shouldn't swing the run on their own");
+            Assert.That(reachRate, Is.InRange(25, 90), "the nephew should be neither free nor hopeless");
+        }
     }
 }

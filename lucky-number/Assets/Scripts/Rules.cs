@@ -15,9 +15,15 @@ namespace NoWinners
         public const float Target = 20, StallEvery = 10;
         public static readonly int[] Inspections = { 4, 8, 12 };
         public static readonly int[] AddSub = { 1, 2, 3, 4, 5, 6, 7, 8, 9 }, Mul = { 2, 3 }, Div = { 2, 3, 5 };
+        // docs/no-winners-offair-draft.md, special dates. Untuned: starting guesses for playtest.
+        public static readonly int[] DateWeeks = { 2, 3, 5, 6, 7, 9, 10, 11 }; // Not week 1, not inspections.
+        public const int PaydayTickets = 2, TelethonLive = 5, TelethonPrize = 2, NephewReward = 200;
+        // One exact number is reachable ~15-27% of weeks (5-6 cards), so he buys a few. 1 = the draft's original rule.
+        public const int NephewNumbers = 3;
     }
 
     public enum Tier { Clean, Small, Scandal }
+    public enum Special { None, Payday, Telethon, Nephew }
     public enum Ending { None, Won, Lost }
     public enum DeskAction { Supplier, Bribe, Shred }
 
@@ -37,7 +43,7 @@ namespace NoWinners
 
     public class Announced
     {
-        public int Holders, Pay, Bonus;
+        public int Holders, Pay, Bonus, Reward;
         public Tier Tier;
     }
 
@@ -52,20 +58,48 @@ namespace NoWinners
         public int? Roll; // Hidden off air: it doesn't exist until the show.
         public Ending Over;
 
+        // Special dates by week. All None unless ShuffleDates runs, so the plain rules stay testable.
+        public readonly Special[] Dates = new Special[Config.Weeks + 2];
+        public readonly List<int> Nephews = new List<int>(); // His numbers: picked the week before his date, from empty squares.
+
         public Run(Random rng = null) { this.rng = rng ?? new Random(); }
 
         public static bool IsInspection(int week) => Array.IndexOf(Config.Inspections, week) >= 0;
         public static int CardLimit(int week) => IsInspection(week) ? Config.InspectionCards : int.MaxValue;
 
+        Special DateOf(int week) => week < Dates.Length ? Dates[week] : Special.None;
+        public Special Today => DateOf(Week);
+        public Special Next => DateOf(Week + 1);
+
+        // One of each date, in shuffled weeks.
+        public void ShuffleDates()
+        {
+            var weeks = Config.DateWeeks.OrderBy(_ => rng.Next()).ToArray();
+            Dates[weeks[0]] = Special.Payday;
+            Dates[weeks[1]] = Special.Telethon;
+            Dates[weeks[2]] = Special.Nephew;
+        }
+
         // Bribes sit above the streak cap, so one always costs something.
-        public int Prize => Config.Prize + Config.Rollover * (Math.Min(Streak, Config.MaxStreakPrize) + Bribes);
+        public int Prize => (Config.Prize + Config.Rollover * (Math.Min(Streak, Config.MaxStreakPrize) + Bribes)) * (Today == Special.Telethon ? Config.TelethonPrize : 1);
+
+        public int LiveBonus => Config.Live * (Today == Special.Telethon ? Config.TelethonLive : 1);
 
         // A small winner needs effort: a few holders, reached with at least one card.
         public static Tier TierOf(int holders, int cards) =>
             holders == 0 ? Tier.Clean : holders <= Config.SmallMax && cards > 0 ? Tier.Small : Tier.Scandal;
 
+        public bool IsFavour(int number) => Today == Special.Nephew && Nephews.Contains(number);
+
+        // The nephew's square counts as a small winner even untouched: the minister asked for it.
+        public Tier TierAt(int number, int cards) =>
+            IsFavour(number) && Board[number] <= Config.SmallMax ? Tier.Small : TierOf(Board[number], cards);
+
+        public int RewardOf(int number) => IsFavour(number) ? Config.NephewReward : 0;
+
+        // Net: what the payout costs, minus the minister's reward. Can go negative.
         public int CostOf(int number, int cards) =>
-            Board[number] * (TierOf(Board[number], cards) == Tier.Small ? Config.Prize : Prize);
+            Board[number] * (TierAt(number, cards) == Tier.Small ? Config.Prize : Prize) - RewardOf(number);
 
         // One card on a number, or null if it leaves 00-99 or isn't whole.
         public static int? Apply(int v, Card c)
@@ -110,9 +144,17 @@ namespace NoWinners
         public void StartWeek()
         {
             Week++;
-            Sold = Config.Tickets1 + Config.TicketsGrowth * (Week - 1);
+            Sold = (Config.Tickets1 + Config.TicketsGrowth * (Week - 1)) * (Today == Special.Payday ? Config.PaydayTickets : 1);
             Cash += Sold * Config.TicketPrice;
             AddTickets(Sold);
+            if (Next == Special.Nephew) // The call comes a week early, so off air has something to plan for.
+            {
+                var empty = Enumerable.Range(0, 100).Where(n => Board[n] == 0).OrderBy(_ => rng.Next()).ToList();
+                if (empty.Count < Config.NephewNumbers) empty.AddRange(Enumerable.Range(0, 100).Except(empty).OrderBy(_ => rng.Next()));
+                Nephews.Clear();
+                Nephews.AddRange(empty.Take(Config.NephewNumbers).OrderBy(n => n));
+            }
+            if (Today == Special.Nephew) foreach (int n in Nephews) Board[n]++; // His own tickets.
             LostCards = 0;
             Acted = null;
             Roll = null;
@@ -137,8 +179,9 @@ namespace NoWinners
         // The number goes out.
         public Announced Announce(int number, int cards, bool onTime)
         {
-            var a = new Announced { Holders = Board[number], Tier = TierOf(Board[number], cards), Pay = CostOf(number, cards), Bonus = onTime ? Config.Live : 0 };
-            Cash += a.Bonus - a.Pay;
+            var a = new Announced { Holders = Board[number], Tier = TierAt(number, cards), Reward = RewardOf(number), Bonus = onTime ? LiveBonus : 0 };
+            a.Pay = CostOf(number, cards) + a.Reward; // Gross payout; the reward is shown on its own line.
+            Cash += a.Bonus + a.Reward - a.Pay;
             Board[number] = 0;
             if (a.Tier == Tier.Clean) { Streak++; Cleans++; Best = Math.Max(Best, Streak); }
             else if (a.Tier == Tier.Small) Smalls++;

@@ -21,7 +21,8 @@ namespace NoWinners
         static readonly Color32[] Bars = { H("#FFC93C"), H("#FF3D6E"), H("#5CF2C8"), H("#C2187A"), H("#7A3AA0"), H("#FF8A1F"), H("#FFF3D6") };
         const string TickerOn = "   TICKET SALES UP AGAIN   *   NUMBER 77 STILL DUE, SAY EXPERTS   *",
             TickerTitle = "   TONIGHT ON THE BIG DRAW   *   COULD IT BE YOU?   *   NO   *",
-            TickerWon = "   THAT WAS THE SEASON   *   SEE YOU IN THE SPRING   *";
+            TickerWon = "   THAT WAS THE SEASON   *   SEE YOU IN THE SPRING   *",
+            TickerTelethon = "   TELETHON NIGHT   *   PRIZE DOUBLED   *   GIVE GENEROUSLY   *   TO US   *";
         static readonly string[] Winners = { "NO WINNERS", "ONE WINNER", "TWO WINNERS", "THREE WINNERS" };
 
         public static string Holders(int n) => n == 1 ? "1 holder" : $"{n} holders";
@@ -77,6 +78,7 @@ namespace NoWinners
         void MonitorWeek(Canvas8 g, float t)
         {
             DrawBoard(g);
+            if (S.Today == Special.Nephew) foreach (int n in S.Nephews) Mark(g, n, Label); // The minister's numbers, all week.
             if (game.Preview >= 0) Dashed(g, game.Preview);
             if (!game.Drawn)
             {
@@ -96,9 +98,10 @@ namespace NoWinners
             Mark(g, now, Ink);
             NumberBox(g, rolling ? $"{(int)(t / 60) * 37 % 100:00}" : $"{now:00}", Ink);
             Chain(g, Tokens(S.Roll.Value, cards), 184, Ink, Label);
-            int h = S.Board[now];
-            if (h == 0) Verdict(g, "NOBODY HOLDS", Good);
-            else Verdict(g, $"{h} HOLD -{S.CostOf(now, cards.Count)}", Alarm);
+            int h = S.Board[now], cost = S.CostOf(now, cards.Count);
+            if (S.IsFavour(now)) Verdict(g, cost <= 0 ? $"NEPHEW +{-cost}" : $"NEPHEW -{cost}", cost <= 0 ? Good : Label);
+            else if (h == 0) Verdict(g, "NOBODY HOLDS", Good);
+            else Verdict(g, $"{h} HOLD -{cost}", Alarm);
         }
 
         void MonitorResult(Canvas8 g)
@@ -109,14 +112,14 @@ namespace NoWinners
             Mark(g, Result.Number, c);
             NumberBox(g, $"{Result.Number:00}", c);
             Chain(g, Tokens(Result.From, Result.Path), 184, c, Label);
-            if (a.Tier != Tier.Scandal) { Verdict(g, a.Tier == Tier.Clean ? "NOBODY WON" : "SMALL WINNER", c); return; }
+            if (a.Tier != Tier.Scandal) { Verdict(g, a.Tier == Tier.Clean ? "NOBODY WON" : a.Reward > 0 ? "NEPHEW WON" : "SMALL WINNER", c); return; }
             Verdict(g, "SCANDAL", c, 2, 3);
             if (Result.Best.To == Result.Number) return;
             // The route that was there: clean if one existed, else the cheapest.
-            bool clean = Result.Best.Cost == 0;
+            bool clean = Result.Best.Cost <= 0;
             Color32 route = clean ? Good : Label;
             Mark(g, Result.Best.To, route);
-            g.Centred(clean ? "CLEAN ROUTE" : "CHEAPEST ROUTE", 280, Dim, 1, 1, 488);
+            g.Centred(Result.Best.Cost < 0 ? "NEPHEW ROUTE" : clean ? "CLEAN ROUTE" : "CHEAPEST ROUTE", 280, Dim, 1, 1, 488);
             var toks = Result.BestPath.Select(k => k.ToString()).ToList();
             toks.Add($"{Result.Best.To:00}");
             Chain(g, toks, 296, route, route);
@@ -328,7 +331,7 @@ namespace NoWinners
         void Live(Canvas8 g, float t)
         {
             bool stalling = game.Stall >= 0;
-            Stage(g, t, TickerOn);
+            Stage(g, t, S.Today == Special.Telethon ? TickerTelethon : TickerOn);
             Ball(g, "??", stalling ? Dim : Ink);
             if (stalling)
             {
@@ -342,13 +345,14 @@ namespace NoWinners
         {
             var a = Result.Air;
             string n = $"{Result.Number:00}";
-            string ticker = a.Tier == Tier.Clean ? "   NO WINNER AGAIN THIS WEEK   *   STATION SENDS ITS SYMPATHY   *"
+            string ticker = a.Reward > 0 ? $"   MINISTER'S NEPHEW WINS ON {n}   *   MINISTER \"AS SURPRISED AS ANYONE\"   *"
+                : a.Tier == Tier.Clean ? "   NO WINNER AGAIN THIS WEEK   *   STATION SENDS ITS SYMPATHY   *"
                 : a.Tier == Tier.Small ? $"   {(a.Holders < Winners.Length ? Winners[a.Holders] : $"{a.Holders} WINNERS")} ON {n}   *   STATION \"DELIGHTED FOR THEM\"   *"
                 : $"   {n} FINALLY COMES IN   *   BOARD CALLS EMERGENCY MEETING   *";
             Stage(g, t, ticker);
             Ball(g, n, Ink);
             g.Centred(a.Holders == 0 ? "NOBODY WON!" : a.Holders == 1 ? "1 WINNER!" : $"{a.Holders} WINNERS!", 196, a.Tier == Tier.Scandal ? Alarm : Label, 2, 2);
-            g.Centred(a.Tier == Tier.Clean ? "WHAT A SHAME!" : a.Tier == Tier.Small ? "LUCKY THEM." : "THE STATION IS THRILLED. REALLY.", 228, Ink);
+            g.Centred(a.Reward > 0 ? "WHAT ARE THE ODDS." : a.Tier == Tier.Clean ? "WHAT A SHAME!" : a.Tier == Tier.Small ? "LUCKY THEM." : "THE STATION IS THRILLED. REALLY.", 228, Ink);
         }
 
         static void SeasonOver(Canvas8 g, float t)
@@ -416,9 +420,19 @@ namespace NoWinners
                 g.Text(label, x, 8, HDim);
                 g.Text(value, x + label.Length * 8 + 8, 4, c, 1, 2);
             }
-            if (!inspection || Result != null) return;
-            g.Chip(16, 32, 160, 24, HRed);
-            g.Text($"INSPECTION: {Config.InspectionCards} CARD", 24, 36, HPlate, 1, 2);
+            if (Result != null) return;
+            if (inspection)
+            {
+                g.Chip(16, 32, 160, 24, HRed);
+                g.Text($"INSPECTION: {Config.InspectionCards} CARD", 24, 36, HPlate, 1, 2);
+                return;
+            }
+            string date = S.Today == Special.Payday ? $"PAYDAY: {Config.PaydayTickets}X TICKETS"
+                : S.Today == Special.Telethon ? $"TELETHON: PRIZE X{Config.TelethonPrize}"
+                : S.Today == Special.Nephew ? $"NEPHEW: {string.Join(" ", S.Nephews.Select(n => n.ToString("00")))}" : null;
+            if (date == null) return;
+            g.Chip(16, 32, date.Length * 8 + 16, 24, HGold);
+            g.Text(date, 24, 36, HPlate, 1, 2);
         }
 
         static void HudButton(Canvas8 g, int x, int y, int w, string label, bool sel)
@@ -442,17 +456,20 @@ namespace NoWinners
         {
             var a = Result.Air;
             bool scandal = a.Tier == Tier.Scandal;
-            g.ChipFrame(176, 64, 288, 232, HLine, HPlate);
-            g.Text($"WEEK {S.Week:00}", 192, 80, HInk, 2, 2);
-            HudRows(g, 192, 448, 120, new[]
+            var rows = new List<(string, string, Color32)>
             {
                 ("ON TIME", a.Bonus > 0 ? $"+{a.Bonus}" : "0", a.Bonus > 0 ? HGold : HDim),
                 ("PAYOUT", a.Pay > 0 ? $"-{a.Pay}" : "0", a.Pay > 0 ? HRed : HDim),
                 ("CASH", $"{Result.CashBefore} > {S.Cash}", scandal ? HRed : HGold),
                 ("STREAK", $"{Result.StreakBefore:00} > {S.Streak:00}", scandal ? HRed : HInk),
-            });
-            g.Rect(192, 224, 256, 2, HLine);
-            HudButton(g, 192, 240, 256, "NEXT WEEK", true);
+            };
+            if (a.Reward > 0) rows.Insert(1, ("MINISTER", $"+{a.Reward}", HGold));
+            int extra = (rows.Count - 4) * 24; // Grows downward; the click anywhere still works.
+            g.ChipFrame(176, 64, 288, 232 + extra, HLine, HPlate);
+            g.Text($"WEEK {S.Week:00}", 192, 80, HInk, 2, 2);
+            HudRows(g, 192, 448, 120, rows.ToArray());
+            g.Rect(192, 224 + extra, 256, 2, HLine);
+            HudButton(g, 192, 240 + extra, 256, "NEXT WEEK", true);
         }
 
         void EndCard(Canvas8 g)
@@ -556,17 +573,20 @@ namespace NoWinners
             var c = Room.Calendar;
             c.Fill(H("#E8E2CC"));
             c.Rect(0, 0, c.W, 40, H("#B3241C"));
-            c.Centred("INSPECTIONS", 12, H("#F2F2E6"), 2);
+            c.Centred("THE CALENDAR", 12, H("#F2F2E6"), 2);
             for (int w = 1; w <= Config.Weeks; w++)
             {
                 int x = 8 + (w - 1) % 4 * 61, y = 48 + (w - 1) / 4 * 80;
                 bool insp = Run.IsInspection(w);
-                c.Rect(x, y, 57, 74, H(insp ? "#B3241C" : "#D0C8AE"));
-                c.Centred($"{w}{(insp ? "!" : "")}", y + 26, H(insp ? "#F2F2E6" : "#1C1E28"), 2, 3, x + 28);
+                var date = S.Dates[w];
+                c.Rect(x, y, 57, 74, H(insp ? "#B3241C" : date != Special.None ? "#E0A82E" : "#D0C8AE"));
+                c.Centred($"{w}{(insp ? "!" : "")}", y + 20, H(insp ? "#F2F2E6" : "#1C1E28"), 2, 3, x + 28);
+                if (date != Special.None) c.Centred(date == Special.Payday ? "PAY" : date == Special.Telethon ? "TELE" : "NEPH", y + 50, H("#1C1E28"), 1, 1, x + 28);
                 if (w < S.Week) c.Rect(x + 4, y + 64, 49, 4, H("#1C1E28"));
                 if (w == S.Week) c.Frame(x + 2, y + 2, 53, 70, H("#1A2AA8"), 4);
             }
-            c.Centred("ONE CARD ONLY ON RED WEEKS", 296, H("#1C1E28"));
+            c.Centred("RED: ONE CARD ONLY", 290, H("#1C1E28"));
+            c.Centred("GOLD: SPECIAL DATE", 304, H("#1C1E28"));
             c.Apply();
         }
 

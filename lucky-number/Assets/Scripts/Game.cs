@@ -202,7 +202,18 @@ namespace NoWinners
         }
 
         // ---- The week ----
-        public void StartRun() { S = new Run(); Sel = 0; runId = DateTime.Now.ToString("yyyyMMdd-HHmmss"); NextWeek(); }
+        public void StartRun() { S = new Run(); S.ShuffleDates(); Sel = 0; runId = DateTime.Now.ToString("yyyyMMdd-HHmmss"); NextWeek(); }
+
+        // The phone, a week before each special date. Also on the calendar from week 1.
+        public static string Numbers(IEnumerable<int> ns) { var s = ns.Select(n => n.ToString("00")).ToList(); return s.Count < 2 ? string.Join("", s) : string.Join(", ", s.Take(s.Count - 1)) + " or " + s[s.Count - 1]; }
+
+        public static string DateCall(Special d, IEnumerable<int> nephews) =>
+            d == Special.Payday ? $"PHONE: \"Payday next week. Double tickets, double cash. The board fills twice as fast.\""
+            : d == Special.Telethon ? $"PHONE: \"Telethon next week. Prize x{Config.TelethonPrize}, and x{Config.TelethonLive} bonus if you're on time.\""
+            : d == Special.Nephew ? $"PHONE: \"Minister here. My nephew has {Numbers(nephews)}. Next week, one of those wins. +{Config.NephewReward} for you.\""
+            : "";
+
+        public static string DateName(Special d) => d == Special.Payday ? "PAYDAY" : d == Special.Telethon ? "TELETHON" : d == Special.Nephew ? "NEPHEW" : "";
 
         void NextWeek()
         {
@@ -213,6 +224,10 @@ namespace NoWinners
             S.StartWeek();
             if (S.Week == 2) Notice = "NOTE ON DESK: \"Off air you get one favour a week. Supplier, bribe or shredder, on the side table. Look right.\"";
             if (S.Week == Config.Inspections[0] - 1) Notice = "PHONE: \"Inspectors next week. One card, no more. It's on the calendar.\"";
+            if (S.Next != Special.None) Notice = $"{Notice} {DateCall(S.Next, S.Nephews)}".Trim();
+            if (S.Today == Special.Payday) Notice = $"{Notice} PAYDAY: {S.Sold} tickets sold, twice the usual. Count the cash, then look at the board.".Trim();
+            if (S.Today == Special.Telethon) Notice = $"{Notice} TELETHON: prize x{Config.TelethonPrize} tonight, and +{S.LiveBonus} if you announce on time.".Trim();
+            if (S.Today == Special.Nephew) Notice = $"{Notice} NEPHEW: make {Numbers(S.Nephews)} win for +{Config.NephewReward}. It counts as a small winner, even untouched.".Trim();
             Station = "monitor";
             Refresh();
         }
@@ -341,8 +356,8 @@ namespace NoWinners
             if (!KeepLog) return;
             try
             {
-                if (!File.Exists(logPath)) File.WriteAllText(logPath, "run,week,desk,offAirSeconds,roll,final,cards,cleanRoute,holders,result,prize,cash,onAirSeconds\n");
-                File.AppendAllText(logPath, $"{runId},{S.Week},{S.Acted},{LiveAt - LockSeconds - offAt:0},{Result.From},{number},{Result.Cards},{best.Cost == 0},{Result.Air.Holders},{Result.Air.Tier},{rate},{S.Cash},{seconds:0}\n");
+                if (!File.Exists(logPath)) File.WriteAllText(logPath, "run,week,desk,offAirSeconds,roll,final,cards,cleanRoute,holders,result,prize,cash,onAirSeconds,special\n");
+                File.AppendAllText(logPath, $"{runId},{S.Week},{S.Acted},{LiveAt - LockSeconds - offAt:0},{Result.From},{number},{Result.Cards},{best.Cost <= 0},{Result.Air.Holders},{Result.Air.Tier},{rate},{S.Cash},{seconds:0},{S.Today}\n");
             }
             catch (IOException e) { Debug.LogWarning($"Week log not written: {e.Message}"); }
         }
