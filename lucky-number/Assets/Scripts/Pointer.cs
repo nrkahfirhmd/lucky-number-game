@@ -99,10 +99,28 @@ namespace NoWinners
             var s = game.S;
             bool offAir = !game.Live;
             int card = System.Array.FindIndex(r.Cards, t => t.GetComponent<Collider>() == c);
-            if (card >= 0 && game.Punching >= 0 && offAir)
+            if (card == Room.CardCount - 1 && game.Replacing)
+            {
+                ok = false;
+                name = $"NEW CARD: {game.IncomingCard}";
+                return true;
+            }
+            if (card >= 0 && card < s.Hand.Count && game.Dealing && offAir)
+            {
+                ok = true;
+                name = $"REPLACE {s.Hand[card]} WITH {game.IncomingCard}";
+                return true;
+            }
+            if (card >= 0 && card < s.Hand.Count && game.Supplying && offAir)
+            {
+                ok = true;
+                name = $"REPLACE {s.Hand[card]} WITH {game.IncomingCard} (-{Config.SupplierCost} CASH)";
+                return true;
+            }
+            if (card >= 0 && card < s.Hand.Count && game.Punching >= 0 && offAir)
             {
                 ok = !s.Hand[card].IsSpecial;
-                name = ok ? $"REPLACE {s.Hand[card]} INTO {s.Rack[game.Punching]}" : $"CARD {s.Hand[card]}: ALREADY A SPECIAL CARD";
+                name = ok ? $"REPLACE {s.Hand[card]} WITH {game.IncomingCard}" : $"CARD {s.Hand[card]}: ALREADY A SPECIAL CARD";
                 return true;
             }
             int rack = System.Array.FindIndex(r.Rack, t => t.GetComponent<Collider>() == c);
@@ -139,9 +157,9 @@ namespace NoWinners
                     _ => "SHREDDER"
                 };
                 string job = kv.Key.ToString().ToUpper();
-                bool cancel = kv.Key == DeskAction.Shred && game.Shredding;
-                ok = cancel || (offAir && s.Acted == null);
-                name = cancel ? $"{thing}: CANCEL" : ok ? $"{thing}: {job}" : $"{thing}: {(offAir ? "ONE JOB A WEEK" : "OFF AIR ONLY")}";
+                bool cancel = (kv.Key == DeskAction.Shred && game.Shredding) || (kv.Key == DeskAction.Supplier && game.Supplying);
+                ok = cancel || (offAir && s.Acted == null && (kv.Key != DeskAction.Supplier || s.Cash > Config.SupplierCost));
+                name = cancel ? $"{thing}: CANCEL" : ok ? $"{thing}: {job}" : $"{thing}: {(offAir ? (s.Acted != null ? "ONE JOB A WEEK" : "NOT ENOUGH CASH") : "OFF AIR ONLY")}";
                 return true;
             }
             name = null; ok = false;

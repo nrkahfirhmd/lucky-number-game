@@ -68,6 +68,10 @@ namespace NoWinners
         public int Preview { get; private set; } = -1;
         public bool Live { get; private set; }
         public bool Shredding { get; private set; }
+        public bool Supplying { get; private set; }
+        public bool Dealing => S.Overflow != null && !Live && Result == null;
+        public bool Replacing => Punching >= 0 || Supplying || Dealing;
+        public Card IncomingCard => Dealing ? S.Overflow.Value : Supplying ? S.PreviewSupplier() : S.Rack[Punching];
         public int Stall { get; private set; } = -1;
         public string Station { get; private set; } = "monitor";
         public Room Room { get; private set; }
@@ -245,7 +249,7 @@ namespace NoWinners
         {
             'S' => "swap the two digits. 52 = 25",
             'M' => "99 minus the number: jump to the opposite side",
-            'T' => "shift column by tens digit ±10/±20",
+            'T' => "shift column by tens digit +-10/+-20",
             'W' => "copy the tens digit to the units: 47 becomes 44",
             'R' => $"add {c.X}, wrapping past 99 to 00, 99 + 3 = 02",
             'J' => "redraw the units ball at random",
@@ -263,7 +267,7 @@ namespace NoWinners
 
         void NextWeek()
         {
-            Live = false; Stall = -1; Shredding = false; Result = null; Preview = -1; PreviewRow = -1; Punching = -1; punched = 0;
+            Live = false; Stall = -1; Shredding = false; Supplying = false; Result = null; Preview = -1; PreviewRow = -1; Punching = -1; punched = 0;
             Played.Clear();
             Landed.Clear();
             offAt = Time.time;
@@ -276,8 +280,24 @@ namespace NoWinners
         public void TakeAction(DeskAction action)
         {
             if (Live || Result != null || S.Acted != null) { Sfx.Play("desk_denied"); return; }
-            if (action == DeskAction.Shred) { Shredding = !Shredding; if (Shredding) Look("monitor"); Refresh(); return; } // Aim it at the board.
+            S.SkipOverflow();
+            if (action == DeskAction.Shred) { Shredding = !Shredding; Supplying = false; Punching = -1; if (Shredding) Look("monitor"); Refresh(); return; } // Aim it at the board.
+            if (action == DeskAction.Supplier && S.Hand.Count >= Config.HandLimit)
+            {
+                if (S.Cash <= Config.SupplierCost) { Sfx.Play("desk_denied"); return; }
+                Supplying = !Supplying; Shredding = false; Punching = -1;
+                if (Supplying) S.PreviewSupplier();
+                Refresh();
+                return;
+            }
             if (!S.TakeAction(action)) { Sfx.Play("desk_denied"); return; }
+            Refresh();
+        }
+
+        public void SupplyCard(int hand)
+        {
+            if (!S.TakeAction(DeskAction.Supplier, hand)) { Sfx.Play("desk_denied"); return; }
+            Supplying = false;
             Refresh();
         }
 
@@ -292,8 +312,9 @@ namespace NoWinners
         public void PickRack(int r)
         {
             if (Live || Result != null || r >= S.Rack.Count) { Sfx.Play("desk_denied"); return; }
+            S.SkipOverflow();
             Punching = Punching == r ? -1 : r;
-            Shredding = false;
+            Shredding = false; Supplying = false;
             Refresh();
         }
 
@@ -315,11 +336,12 @@ namespace NoWinners
         public void GoLive()
         {
             if (Live || Result != null) return;
+            S.SkipOverflow();
             S.TearSlip(); // An unread slip goes in the bin.
             S.TakeAction(DeskAction.LieLow); // No desk action: you lay low.
             S.DrawNumber();
             if (firstRun) { S.SeedRoll(); firstRun = false; }
-            Live = true; Shredding = false; Preview = -1; Punching = -1;
+            Live = true; Shredding = false; Supplying = false; Preview = -1; Punching = -1;
             Headline("ON AIR");
             RolledAt = Time.time;
             LiveAt = RolledAt + LockSeconds;
@@ -475,6 +497,8 @@ namespace NoWinners
                 if (Mode == Mode.Settings) CloseSettings();
                 else if (Mode == Mode.Paused) Resume();
                 else if (Mode == Mode.Play && Shredding) { Shredding = false; Refresh(); }
+                else if (Mode == Mode.Play && Supplying) { Supplying = false; Refresh(); }
+                else if (Mode == Mode.Play && Dealing) { S.SkipOverflow(); Refresh(); }
                 else if (Mode == Mode.Play && Punching >= 0) { Punching = -1; Refresh(); }
                 else if (Mode == Mode.Play && (Station == "calendar" || Station == "slip")) Look("monitor");
                 else Pause();
@@ -492,7 +516,9 @@ namespace NoWinners
             if (mouse == null) return;
             Vector2 at = mouse.position.ReadValue();
             pointer = new Vector2(at.x / Screen.width * 2 - 1, at.y / Screen.height * 2 - 1);
+            string wasHover = hover;
             if (Mode == Mode.Play) Hover(at);
+            if (hover != wasHover) lastDraw = -100;
             if (mouse.leftButton.wasPressedThisFrame) Click(at);
         }
 
@@ -582,7 +608,11 @@ namespace NoWinners
             if (Station != "monitor" && Station != "machine") return;
             var c = Pick(at, out var point);
             if (c == null) return;
-            if (c == Room.CalendarPaper && !Shredding) { Look("calendar"); return; }
+            if (c == Room.CalendarPaper && !Shredding && !Replacing) { Look("calendar"); return; }
+            int card = Array.FindIndex(Room.Cards, t => t.GetComponent<Collider>() == c);
+            if (card >= 0 && card < S.Hand.Count && Dealing) { S.ReplaceOverflow(card); Refresh(); return; }
+            if (card >= 0 && card < S.Hand.Count && Supplying) { SupplyCard(card); return; }
+            if (card >= 0 && card < S.Hand.Count && Punching >= 0) { Repunch(card); return; }
             if (Station == "machine") { foreach (var kv in Room.ActionProps) if (c == kv.Value) TakeAction(kv.Key); return; } // The side table.
             if (Shredding && SquareAt(c, point) >= 0) { ShredSquare(SquareAt(c, point)); return; }
             if (c == Room.GoButton) { Go(); return; }
@@ -592,9 +622,7 @@ namespace NoWinners
             int rack = Array.FindIndex(Room.Rack, t => t.GetComponent<Collider>() == c);
             if (rack >= 0) { PickRack(rack); return; }
             if (c.transform == Room.Slip) { Look("slip"); return; } // Read it up close first, like the calendar.
-            int card = Array.FindIndex(Room.Cards, t => t.GetComponent<Collider>() == c);
-            if (card >= 0 && Punching >= 0) Repunch(card);
-            else if (card >= 0) PlayCard(card);
+            if (card >= 0 && card < S.Hand.Count) PlayCard(card);
         }
 
         // Which button on the 160x192 slip a point is on: 1 TAKE, 2 TEAR, 0 neither. Screens.DrawSlip draws the same layout.
@@ -616,11 +644,25 @@ namespace NoWinners
                 bool shown = card.gameObject.activeSelf, snap = shown && !cardOut[i];
                 cardOut[i] = shown;
                 if (!shown || i == feeding) continue;
-                bool up = Mode == Mode.Play && i == hoverCard && i < n && (CanPlay(i) || (Punching >= 0 && !S.Hand[i].IsSpecial));
+                bool up = Mode == Mode.Play && i == hoverCard && i < n && (CanPlay(i) || Supplying || Dealing || (Punching >= 0 && !S.Hand[i].IsSpecial));
                 float d = i - (n - 1) / 2f;
                 Vector3 pos, scale = Room.CardSize;
                 Quaternion rot;
-                if (Focus)
+                if (Replacing && i == Room.CardCount - 1)
+                {
+                    var t = cam.transform;
+                    pos = t.TransformPoint(new Vector3(0, .06f, .35f));
+                    rot = t.rotation;
+                    scale *= .62f;
+                }
+                else if (Replacing)
+                {
+                    var t = cam.transform;
+                    pos = t.TransformPoint(new Vector3(d * .082f, -.095f + (up ? .03f : 0), .35f + i * .0005f - (up ? .006f : 0)));
+                    rot = t.rotation;
+                    scale *= .62f;
+                }
+                else if (Focus)
                 {
                     // ponytail: 0.35 m from the eye keeps the fan in front of the monitor glass; 0.6 scale keeps the board's bottom row readable.
                     var t = cam.transform;
@@ -718,18 +760,9 @@ namespace NoWinners
             if (Tutorial != null) screens.DrawHud(); // Every frame: the brackets follow the swaying camera.
         }
 
-        // Only what's under the pointer: notices and instructions were cut as noise.
-        string Hint() => hover ?? "";
-
-        // ponytail: plain IMGUI line for hover text. Replace with tags on the props if it reads as clutter.
-        GUIStyle hintStyle;
         void OnGUI()
         {
             if (Event.current.type == EventType.Repaint) GUI.DrawTexture(HudRect, screens.Hud.Tex);
-            hintStyle ??= new GUIStyle(GUI.skin.box) { fontSize = Mathf.Max(14, Screen.height / 45), wordWrap = true };
-            if (Mode != Mode.Play || Hint().Length == 0) return;
-            float w = Screen.width * .8f, h = hintStyle.CalcHeight(new GUIContent(Hint()), w);
-            GUI.Box(new UnityEngine.Rect((Screen.width - w) / 2, Screen.height - h - 8, w, h), Hint(), hintStyle);
         }
     }
 }

@@ -323,8 +323,8 @@ namespace NoWinners
         static void TitleCard(Canvas8 g, float t)
         {
             Stage(g, t, TickerTitle, live: false, header: false);
-            g.Centred("DON'T LET ANYONE WIN", 96, Label, 3, 5);
-            g.Centred("THE LOTTERY NOBODY WINS", 160, Ink, 1, 2);
+            g.Centred("DON'T LET", 72, Label, 4, 5);
+            g.Centred("ANYONE WIN", 128, Label, 4, 5);
             if (Still || (int)(t / 500) % 2 == 0) g.Centred("PRESS ANY KEY", 216, Ink, 2, 2);
         }
 
@@ -414,10 +414,19 @@ namespace NoWinners
             {
                 Bar(g);
                 if (!game.EndCardUp) Coach(g);
+                if (Result == null && !string.IsNullOrEmpty(game.HoverText)) Footnote(g, game.HoverText.ToUpper());
                 if (Result == null) Banner(g);
                 if (Result != null && S.Over != Ending.None && game.EndCardUp) EndCard(g);
+                if (game.Replacing) ReplacePrompt(g);
             }
             g.Apply();
+        }
+
+        void ReplacePrompt(Canvas8 g)
+        {
+            g.ChipFrame(160, 32, 320, 28, HGold, HPlate);
+            g.Centred($"NEW CARD: {game.IncomingCard}", 38, HGold, 1, 2);
+            Outlined(g, "REPLACE TO", 188, HInk);
         }
 
         void Bar(Canvas8 g)
@@ -508,6 +517,20 @@ namespace NoWinners
             g.Right("TAB: SKIP", 620, top + ph - 16, HDim);
         }
 
+        static void Outlined(Canvas8 g, string text, int y, Color32 c)
+        {
+            foreach (var (dx, dy) in new[] { (-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (1, -1), (-1, 1), (1, 1) })
+                g.Centred(text, y + dy, HPlate, 1, 1, 320 + dx);
+            g.Centred(text, y, c);
+        }
+
+        static void Footnote(Canvas8 g, string text)
+        {
+            var lines = Wrap(text, 76).ToList();
+            int y = 348 - (lines.Count - 1) * 12;
+            for (int i = 0; i < lines.Count; i++) Outlined(g, lines[i], y + i * 12, HInk);
+        }
+
         // Corner brackets with a dark rim, so they read on any background.
         static void Brackets(Canvas8 g, int x0, int y0, int x1, int y1, Color32 c)
         {
@@ -593,10 +616,18 @@ namespace NoWinners
             for (int i = 0; i < Room.CardCount; i++)
             {
                 var card = Room.Cards[i];
+                if (game.Replacing && i == Room.CardCount - 1)
+                {
+                    card.gameObject.SetActive(true);
+                    PunchCard(Room.CardFaces[i], game.IncomingCard, true);
+                    Room.CardFaces[i].Frame(0, 0, 128, 176, HGold, 6);
+                    Room.CardFaces[i].Apply();
+                    continue;
+                }
                 bool show = i < n && !game.Played.Contains(i);
                 card.gameObject.SetActive(show);
                 if (!show) continue;
-                PunchCard(Room.CardFaces[i], S.Hand[i], game.CanPlay(i) || (game.Punching >= 0 && !S.Hand[i].IsSpecial));
+                PunchCard(Room.CardFaces[i], S.Hand[i], game.CanPlay(i) || game.Supplying || game.Dealing || (game.Punching >= 0 && !S.Hand[i].IsSpecial));
             }
         }
 

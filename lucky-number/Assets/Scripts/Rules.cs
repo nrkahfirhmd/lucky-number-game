@@ -157,6 +157,7 @@ namespace NoWinners
         public readonly List<Card> Rack = new List<Card> { new Card('S') }; // One SWAP, to teach re-punching in week 1.
         public bool RedrawDealt; // REDRAW: at most one per run.
         public Slip Offer, Pinned; // The printer's slip this week, and the one you took.
+        public Card? Supplied, Overflow; // The card waiting at the supplier or weekly deal when the hand is full.
         public readonly int[] Board = new int[100];
         public List<Card> Hand = new List<Card>();
         public DeskAction? Acted;
@@ -300,8 +301,18 @@ namespace NoWinners
         void Deal()
         {
             if (Hand.Count < Config.HandLimit) Hand.Add(RandomCard());
-            else LostCards++;
+            else { Overflow = RandomCard(); LostCards++; }
         }
+
+        public bool ReplaceOverflow(int hand)
+        {
+            if (Overflow == null || hand < 0 || hand >= Hand.Count) return false;
+            Hand[hand] = Overflow.Value;
+            Overflow = null;
+            return true;
+        }
+
+        public void SkipOverflow() => Overflow = null;
 
         static readonly Slip[] AvailableSlips = { Slip.Sponsor, Slip.Quiet, Slip.Rush, Slip.Favour, Slip.Bulk, Slip.Collector };
 
@@ -322,6 +333,8 @@ namespace NoWinners
             LostCards = 0;
             Acted = null;
             Roll = null;
+            Supplied = null;
+            Overflow = null;
             Pinned = Slip.None;
             Offer = Slip.None;
             if (Week >= Config.SlipFrom && !IsInspection(Week))
@@ -356,13 +369,20 @@ namespace NoWinners
             return true;
         }
 
+        public Card PreviewSupplier() => Supplied ??= RandomCard();
+
         // Off air, once a week. Returns false if it can't be taken.
         public bool TakeAction(DeskAction action, int square = -1)
         {
             if (Acted != null) return false;
             if (action == DeskAction.Shred && (square < 0 || Board[square] == 0)) return false;
-            if (action == DeskAction.Supplier && Cash <= Config.SupplierCost) return false; // It would bankrupt you.
-            if (action == DeskAction.Supplier) { Cash -= Config.SupplierCost; Deal(); } // Paid even if a full hand loses the card.
+            if (action == DeskAction.Supplier && (Cash <= Config.SupplierCost || (Hand.Count >= Config.HandLimit && (square < 0 || square >= Hand.Count)))) return false; // It would bankrupt you, or needs a slot to replace.
+            if (action == DeskAction.Supplier)
+            {
+                Cash -= Config.SupplierCost;
+                if (Hand.Count >= Config.HandLimit) { Hand[square] = PreviewSupplier(); Supplied = null; }
+                else Deal();
+            }
             else if (action == DeskAction.Bribe) { Cash += Config.Bribe; Bribes++; }
             else if (action == DeskAction.Shred)
             {

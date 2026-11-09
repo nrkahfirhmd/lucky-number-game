@@ -22,6 +22,10 @@ namespace NoWinners.Tests
             Assert.AreEqual(5, s.Hand.Count);
             s.StartWeek();
             Assert.AreEqual(1, s.LostCards, "full hand loses that week's card");
+            Assert.IsNotNull(s.Overflow, "weekly card offered for replacement when hand is full");
+            var offered = s.Overflow.Value;
+            Assert.IsTrue(s.ReplaceOverflow(0));
+            Assert.AreEqual((offered, (Card?)null), (s.Hand[0], s.Overflow));
         }
 
         [Test]
@@ -62,6 +66,11 @@ namespace NoWinners.Tests
             Assert.AreEqual((1, before - Config.SupplierCost), (s.Hand.Count, s.Cash), "supplier costs cash");
             s.Acted = null; s.Cash = Config.SupplierCost;
             Assert.IsFalse(s.TakeAction(DeskAction.Supplier), "can't buy a card with your last cash");
+            s.Cash = 500;
+            while (s.Hand.Count < Config.HandLimit) s.Hand.Add(new Card('+', 1));
+            Assert.IsFalse(s.TakeAction(DeskAction.Supplier), "full hand needs a card index to replace");
+            Assert.IsTrue(s.TakeAction(DeskAction.Supplier, 2), "supplier replaces chosen hand card when full");
+            Assert.AreEqual(Config.HandLimit, s.Hand.Count);
 
             // Lie low: the prize comes down, never below the base.
             s = new Run(new Random(3)) { Streak = 2 };
@@ -452,6 +461,10 @@ namespace NoWinners.Tests
                     var desk = bot.Desk ?? (g.Hand.Count(c => !c.IsSpecial) <= 2 && g.Cash > 220 ? DeskAction.Supplier
                         : g.Cash < 120 ? DeskAction.Bribe : DeskAction.LieLow);
                     if (desk == DeskAction.Shred) g.TakeAction(desk, Enumerable.Range(0, 100).OrderByDescending(n => g.Board[n]).First());
+                    else if (desk == DeskAction.Supplier && g.Hand.Count >= Config.HandLimit)
+                    {
+                        if (!g.TakeAction(desk, Math.Max(0, g.Hand.FindIndex(c => !c.IsSpecial)))) g.TakeAction(DeskAction.LieLow);
+                    }
                     else if (!g.TakeAction(desk)) g.TakeAction(DeskAction.LieLow);
                     // On air.
                     g.DrawNumber();
