@@ -1,0 +1,77 @@
+newmtl palette
+Kd 0.8 0.8 0.8
+
+newmtl glow
+Kd 0.8 0.8 0.8
+
+newmtl glass
+Kd 0.8 0.8 0.8
+
+newmtl screen_monitor
+Kd 0.8 0.8 0.8
+
+newmtl screen_tv
+Kd 0.8 0.8 0.8
+
+newmtl machine_face
+Kd 0.8 0.8 0.8
+
+newmtl clock_face
+Kd 0.8 0.8 0.8
+
+newmtl window_night
+Kd 0.8 0.8 0.8
+
+newmtl poster
+Kd 0.8 0.8 0.8
+
+newmtl calendar
+Kd 0.8 0.8 0.8
+
+newmtl memo
+Kd 0.8 0.8 0.8
+
+newmtl newspaper
+Kd 0.8 0.8 0.8
+
+newmtl plates
+Kd 0.8 0.8 0.8
+
+newmtl card_face
+Kd 0.8 0.8 0.8
+
+newmtl ball_numbers
+Kd 0.8 0.8 0.8
+
+newmtl wall_days
+Kd 0.8 0.8 0.8
+
+newmtl wall_promo
+Kd 0.8 0.8 0.8
+
+newmtl wall_chart
+Kd 0.8 0.8 0.8
+
+newmtl wall_minister
+Kd 0.8 0.8 0.8
+
+newmtl wall_employee
+Kd 0.8 0.8 0.8
+
+newmtl wall_warning
+Kd 0.8 0.8 0.8
+
+newmtl wall_log
+Kd 0.8 0.8 0.8
+
+newmtl wall_smile
+Kd 0.8 0.8 0.8
+
+newmtl wall_firstball
+Kd 0.8 0.8 0.8
+
+newmtl wall_privilege
+Kd 0.8 0.8 0.8
+
+newmtl wall_filed
+Kd 0.8 0.8 0.8

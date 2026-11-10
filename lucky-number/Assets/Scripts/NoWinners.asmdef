@@ -1,0 +1,5 @@
+{
+    "name": "NoWinners",
+    "references": ["Unity.InputSystem"],
+    "autoReferenced": true
+}
