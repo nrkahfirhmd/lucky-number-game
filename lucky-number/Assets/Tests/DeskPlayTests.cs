@@ -56,10 +56,10 @@ namespace NoWinners.Tests
             game.Click(Vector2.zero); // Start card to the title menu.
             game.OpenSettings();
             yield return new WaitForSeconds(1.2f); // The camera leans in to the monitor.
-            game.Click(game.MonitorToScreen(364 + 36, 196 + 12)); // OFF
+            game.Click(game.MonitorToScreen(364 + 36, Game.RowY + 3 * Game.RowStep + 36)); // OFF
             Assert.IsFalse(Prefs.Tutorial);
             Assert.AreEqual(Game.TutorialSteps, game.TutorialStep, "off hides it at once");
-            game.Click(game.MonitorToScreen(364 + 80 + 36, 196 + 12)); // ON
+            game.Click(game.MonitorToScreen(364 + 80 + 36, Game.RowY + 3 * Game.RowStep + 36)); // ON
             Assert.IsTrue(Prefs.Tutorial);
             Assert.AreEqual(0, game.TutorialStep, "on in week 1 starts it over");
             yield return new WaitForSecondsRealtime(.2f); // The monitor redraws on a 0.1 s timer.

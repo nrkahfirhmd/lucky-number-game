@@ -5,12 +5,13 @@ namespace NoWinners
 {
     // Plays the generated sound effects (tools/sfx, docs/no-winners-sfx-list.md) by watching the game's public state.
     // Game only calls in for what it can't show as state: a refused click.
-    // Clips are pre-mixed to "quiet off air, loud on air", so everything plays at 1 and Prefs.Volume is the master.
+    // Clips are pre-mixed to "quiet off air, loud on air", so every source plays at its own level times Prefs.Volume. Music has its own slider, Prefs.Music.
     public class Sfx : MonoBehaviour
     {
         Game game;
         readonly Dictionary<string, AudioClip> clips = new Dictionary<string, AudioClip>();
-        AudioSource desk, tv, room, machine, deadAir, standBy;
+        readonly Dictionary<AudioSource, float> level = new Dictionary<AudioSource, float>(); // Each SFX source's own level, before the slider.
+        AudioSource desk, tv, room, machine, deadAir, standBy, music;
         AudioLowPassFilter duck;
         readonly List<(float at, string name)> queue = new List<(float, string)>();
 
@@ -31,7 +32,8 @@ namespace NoWinners
         WeekResult result;
         string station, hover;
         int preview = -1;
-        float volume, nextClock, lastFlip;
+        float volume, musicVolume, musicLevel, nextClock, lastFlip, musicAt = float.MaxValue;
+        public float SfxVolume => desk.volume;
         bool reduce, tock;
 
         void Awake()
@@ -44,10 +46,12 @@ namespace NoWinners
             {
                 var s = host.AddComponent<AudioSource>();
                 s.playOnAwake = false; s.loop = loop; s.spatialBlend = 0;
+                level[s] = 1;
                 return s;
             }
             desk = Source(false); tv = Source(false);
-            room = Source(true); machine = Source(true); deadAir = Source(true); standBy = Source(true);
+            room = Source(true); machine = Source(true); deadAir = Source(true); standBy = Source(true); music = Source(true);
+            level.Remove(music);
             duck = host.AddComponent<AudioLowPassFilter>(); // Pause muffles everything behind the menu.
             duck.cutoffFrequency = 22000;
         }
@@ -66,7 +70,7 @@ namespace NoWinners
 
         void Loop(AudioSource s, string name, float vol = 1)
         {
-            s.volume = vol;
+            level[s] = vol;
             if (s.isPlaying || !clips.TryGetValue(name, out var clip)) return;
             s.clip = clip;
             s.Play();
@@ -82,8 +86,9 @@ namespace NoWinners
         // After Game.Update, so this frame's changes are all in.
         void LateUpdate()
         {
-            AudioListener.volume = Prefs.Volume;
+            foreach (var kv in level) kv.Key.volume = kv.Value * Prefs.Volume;
             duck.cutoffFrequency = game.Mode == Mode.Paused ? 900 : 22000;
+            Music();
             if (game.IntroUp) { Intro(); return; } // The week's sounds wait for the backstory to end.
             introShown = 0;
             if (!started) { started = true; Begin(); return; }
@@ -116,9 +121,26 @@ namespace NoWinners
             Loop(room, "room_tone");
             Play("menu_tv_power_on");
             Later(1.3f, "broadcast_theme");
+            musicAt = Time.unscaledTime + 4.5f; // Once the theme has finished.
             nextClock = Time.unscaledTime + 2;
             run = game.S; week = run.Week;
             Remember();
+        }
+
+        // One loop for the menus and the desk (tools/music). Loud on the title, a bed under the desk,
+        // nearly gone on air so the broadcast carries, out when a run ends.
+        void Music()
+        {
+            if (Time.unscaledTime < musicAt || !clips.TryGetValue("music_main", out var clip)) return;
+            if (!music.isPlaying) { music.clip = clip; musicLevel = 0; music.Play(); Heard.Add("music_main"); }
+            var m = game.Mode;
+            float want = game.S.Over != Ending.None ? 0
+                : m == Mode.Start || m == Mode.Title || (m == Mode.Settings && game.SettingsFrom == Mode.Title) ? .9f
+                : game.IntroUp ? .35f
+                : game.Live ? .25f
+                : .6f;
+            musicLevel = Mathf.MoveTowards(musicLevel, want, Time.unscaledDeltaTime * .5f);
+            music.volume = musicLevel * Prefs.Music;
         }
 
         void Menus()
@@ -134,7 +156,7 @@ namespace NoWinners
             else if (game.Sel != sel && (m != Mode.Play || game.EndCardUp)) Play("ui_menu_move");
             if (m == Mode.Settings)
             {
-                if (Prefs.Volume != volume) Play("ui_slider_tick");
+                if (Prefs.Volume != volume || Prefs.Music != musicVolume) Play("ui_slider_tick");
                 else if (Prefs.ReduceMotion != reduce) Play("ui_menu_move");
             }
         }
@@ -183,7 +205,7 @@ namespace NoWinners
                 Play($"machine_digit_flip_{flipVariant % 3 + 1}", .9f);
                 flipVariant++;
             }
-            if (game.Drawn && !drawn) { Play("machine_lock"); machine.volume = .3f; }
+            if (game.Drawn && !drawn) { Play("machine_lock"); level[machine] = .3f; }
 
             if (game.Busy && !busy) Play("rig_card_feed");
             if (game.Result == null && game.Played.Count > played) Play("rig_number_snap");
@@ -272,7 +294,7 @@ namespace NoWinners
             played = game.Played.Count;
             result = game.Result; revealed = game.Result != null && game.Result.Revealed; endCard = game.EndCardUp;
             station = game.Station; hover = game.HoverText; preview = game.Preview;
-            volume = Prefs.Volume; reduce = Prefs.ReduceMotion;
+            volume = Prefs.Volume; musicVolume = Prefs.Music; reduce = Prefs.ReduceMotion;
         }
     }
 }

@@ -135,8 +135,11 @@ Written 2026-11-07 from the [GDD](GDD.md), the [art direction](no-winners-art-di
 | `result_gift_card`: rising chime; `desk_card_lost` (reused) if the rack is full | A special card is won | Should |
 | `intro_line`: low swell; `intro_reveal`: dark brass sting | Each backstory line; the last line | Should |
 
+## Music (added 2026-11-10)
+
+One loop, `music_main.wav`, for the title and the desk. Written as MIDI by `tools/music/build.mjs`, rendered in a DAW (`tools/music/don't_let_anybody_win_music.wav`), then cut to exactly 56 bars at 112 BPM (120 s) with the reverb tail folded onto the start so it loops cleanly, then made fuller: +3 dB at 80 Hz, +2 dB at 8 kHz, 1.25x stereo width, 2.5:1 glue compression, limited to -1 dB (about -12 LUFS). Imported as streaming. `Sfx.Music()` starts it after the opening theme: 0.9 on the title, 0.6 at the desk, 0.35 under the backstory, 0.25 on air, fading out when a run ends. Settings has separate SFX VOLUME (`Prefs.Volume`) and MUSIC VOLUME (`Prefs.Music`) sliders.
+
 ## Notes
 
 - About 30 Must sounds. Many share a source: one set of blips covers hover, menus, number snaps and the timer.
-- Settings has no volume control yet. Add at least Master, SFX and Music before the audio work starts.
 - Reduce-motion doesn't affect audio. Consider making the static burst quieter when it's on.

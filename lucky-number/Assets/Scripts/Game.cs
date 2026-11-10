@@ -13,11 +13,12 @@ namespace NoWinners
     // Player settings, kept in PlayerPrefs.
     public static class Prefs
     {
-        public static float Volume = .8f;
+        public static float Volume = .8f; // Sound effects.
+        public static float Music = .8f;
         public static bool ReduceMotion;
         public static bool Tutorial = true; // Week 1's coach. Turns itself off once finished or skipped.
-        public static void Load() { Volume = PlayerPrefs.GetFloat("volume", .8f); ReduceMotion = PlayerPrefs.GetInt("reduceMotion") == 1; Tutorial = PlayerPrefs.GetInt("tutorialDone") == 0; }
-        public static void Save() { PlayerPrefs.SetFloat("volume", Volume); PlayerPrefs.SetInt("reduceMotion", ReduceMotion ? 1 : 0); PlayerPrefs.SetInt("tutorialDone", Tutorial ? 0 : 1); PlayerPrefs.Save(); }
+        public static void Load() { Volume = PlayerPrefs.GetFloat("volume", .8f); Music = PlayerPrefs.GetFloat("music", .8f); ReduceMotion = PlayerPrefs.GetInt("reduceMotion") == 1; Tutorial = PlayerPrefs.GetInt("tutorialDone") == 0; }
+        public static void Save() { PlayerPrefs.SetFloat("volume", Volume); PlayerPrefs.SetFloat("music", Music); PlayerPrefs.SetInt("reduceMotion", ReduceMotion ? 1 : 0); PlayerPrefs.SetInt("tutorialDone", Tutorial ? 0 : 1); PlayerPrefs.Save(); }
     }
 
     public class WeekResult
@@ -158,8 +159,10 @@ namespace NoWinners
         public void CloseSettings() { Prefs.Save(); SetMode(SettingsFrom); }
 
         public void SetVolume(float v) => Prefs.Volume = Mathf.Clamp01(Mathf.Round(v * 20) / 20);
-        public const int SettingRows = 3; // Volume, reduce motion, tutorial. BACK comes after.
-        public const int BackY = 244; // Settings BACK button, on the monitor. Screens.SettingsPanel draws the same layout.
+        public void SetMusic(float v) => Prefs.Music = Mathf.Clamp01(Mathf.Round(v * 20) / 20);
+        public const int SettingRows = 4; // SFX volume, music volume, reduce motion, tutorial. BACK comes after.
+        public const int RowY = 44, RowStep = 56; // Settings rows on the monitor. Screens.SettingsPanel draws the same layout.
+        public const int BackY = RowY + SettingRows * RowStep + 8;
 
         // Menu buttons, top to bottom, for whichever menu is up. Empty when none is.
         System.Action[] Buttons()
@@ -174,8 +177,9 @@ namespace NoWinners
         void Nudge(int dir)
         {
             if (Sel == 0) SetVolume(Prefs.Volume + dir * .1f);
-            else if (Sel == 1) Prefs.ReduceMotion = dir > 0;
-            else if (Sel == 2) SetTutorial(dir > 0);
+            else if (Sel == 1) SetMusic(Prefs.Music + dir * .1f);
+            else if (Sel == 2) Prefs.ReduceMotion = dir > 0;
+            else if (Sel == 3) SetTutorial(dir > 0);
         }
 
         // On: shows now if it's still week 1, else from the next run. Off: gone at once.
@@ -225,14 +229,15 @@ namespace NoWinners
                 for (int i = 0; i < buttons.Length; i++) if (In(m, 352, 184 + i * 40, 272, 32)) { buttons[i](); return; }
                 return;
             }
-            // Settings: rows every 64 px from y 44, BACK below them. Screens.SettingsPanel draws the same layout.
+            // Settings: rows every RowStep px from RowY, BACK below them. Screens.SettingsPanel draws the same layout.
             if (In(m, 352, BackY, 272, 32)) { CloseSettings(); return; }
             for (int row = 0; row < SettingRows; row++)
-                if (In(m, 352, 44 + row * 64, 272, 56)) Sel = row;
-            if (In(m, 364, 64, 176, 32)) SetVolume((m.x - 364) / 176f);
+                if (In(m, 352, RowY + row * RowStep, 272, RowStep - 4)) Sel = row;
+            if (In(m, 364, RowY + 20, 176, 32)) SetVolume((m.x - 364) / 176f);
+            if (In(m, 364, RowY + RowStep + 20, 176, 32)) SetMusic((m.x - 364) / 176f);
             for (int i = 0; i < 2; i++)
-                if (In(m, 364 + i * 80, 132, 72, 24)) Prefs.ReduceMotion = i == 1;
-                else if (In(m, 364 + i * 80, 196, 72, 24)) SetTutorial(i == 1);
+                if (In(m, 364 + i * 80, RowY + 2 * RowStep + 24, 72, 24)) Prefs.ReduceMotion = i == 1;
+                else if (In(m, 364 + i * 80, RowY + 3 * RowStep + 24, 72, 24)) SetTutorial(i == 1);
         }
 
         void MenuKeys(Keyboard keys)
@@ -505,7 +510,7 @@ namespace NoWinners
             CheckStall();
             StepTutorial();
             if (Drawn && Result == null && Tutorial != null) frozen += Time.deltaTime; // The guide never races the clock.
-            int settingsSig = Mode == Mode.Settings ? System.HashCode.Combine(Sel, Prefs.Volume, Prefs.ReduceMotion, Prefs.Tutorial) : 0;
+            int settingsSig = Mode == Mode.Settings ? System.HashCode.Combine(Sel, Prefs.Volume, Prefs.Music, Prefs.ReduceMotion, Prefs.Tutorial) : 0;
             if (settingsSig != lastSettingsSig) { lastSettingsSig = settingsSig; screens.MarkDirty(); lastDraw = -100; }
             if (Time.unscaledTime - lastDraw > .1f) { screens.DrawTimed(); lastDraw = Time.unscaledTime; }
             AnimateMachine();

@@ -250,13 +250,16 @@ namespace NoWinners
         void SettingsPanel(Canvas8 g)
         {
             g.Text("SETTINGS", 352, 24, Label, 2, 2);
-            // Rows every 64 px from y 44, BACK below. Game.ClickMenu hit-tests the same layout.
-            SetRow(g, 44, "VOLUME", game.Sel == 0);
-            Slider(g, 44, Prefs.Volume);
-            SetRow(g, 108, "REDUCE MOTION", game.Sel == 1);
-            Seg(g, 364, 132, 72, new[] { "OFF", "ON" }, Prefs.ReduceMotion ? 1 : 0);
-            SetRow(g, 172, "TUTORIAL", game.Sel == 2);
-            Seg(g, 364, 196, 72, new[] { "OFF", "ON" }, Prefs.Tutorial ? 1 : 0);
+            // Rows every Game.RowStep px from Game.RowY, BACK below. Game.ClickMenu hit-tests the same layout.
+            int Y(int row) => Game.RowY + row * Game.RowStep;
+            SetRow(g, Y(0), "SFX VOLUME", game.Sel == 0);
+            Slider(g, Y(0), Prefs.Volume);
+            SetRow(g, Y(1), "MUSIC VOLUME", game.Sel == 1);
+            Slider(g, Y(1), Prefs.Music);
+            SetRow(g, Y(2), "REDUCE MOTION", game.Sel == 2);
+            Seg(g, 364, Y(2) + 24, 72, new[] { "OFF", "ON" }, Prefs.ReduceMotion ? 1 : 0);
+            SetRow(g, Y(3), "TUTORIAL", game.Sel == 3);
+            Seg(g, 364, Y(3) + 24, 72, new[] { "OFF", "ON" }, Prefs.Tutorial ? 1 : 0);
             MonButton(g, 352, Game.BackY, 272, "BACK", game.Sel == Game.SettingRows);
         }
 
@@ -271,7 +274,7 @@ namespace NoWinners
 
         static void SetRow(Canvas8 g, int y, string label, bool focused)
         {
-            if (focused) g.ChipFrame(352, y, 272, 56, Label, Panel); else g.Chip(352, y, 272, 56, Panel);
+            if (focused) g.ChipFrame(352, y, 272, Game.RowStep - 4, Label, Panel); else g.Chip(352, y, 272, Game.RowStep - 4, Panel);
             g.Text(label, 364, y + 8, focused ? Ink : Dim);
         }
 
