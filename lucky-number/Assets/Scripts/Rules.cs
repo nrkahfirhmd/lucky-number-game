@@ -93,7 +93,7 @@ namespace NoWinners
             Slip.Sponsor => "FINAL NUMBER ENDS IN 7",
             Slip.Quiet => "PLAY AT MOST 1 CARD",
             Slip.Rush => $"ANNOUNCE WITHIN {Config.RushSeconds} S",
-            Slip.Favour => $"A SMALL WINNER (1-{Config.SmallMax})",
+            Slip.Favour => $"A SMALL WINNER (1-{Config.SmallMax} HOLDERS)",
             Slip.Bulk => "NOTHING: PAID NOW",
             Slip.Collector => "A CLEAN DRAW",
             _ => ""
@@ -112,8 +112,8 @@ namespace NoWinners
         public static string Pays(Slip s) => s switch
         {
             Slip.Collector => "1 SPECIAL CARD",
-            Slip.Bulk => $"+{Reward(s)} NOW",
-            _ => $"+{Reward(s)}"
+            Slip.Bulk => $"+{Reward(s)} CASH NOW",
+            _ => $"+{Reward(s)} CASH"
         };
 
         public static int Fine(Slip s) => s switch
@@ -126,9 +126,9 @@ namespace NoWinners
         public static string Fails(Slip s) => s switch
         {
             Slip.Sponsor => $"-{Fine(s)} CASH",
-            Slip.Favour => $"-{Fine(s)} IF CLEAN",
+            Slip.Favour => $"-{Fine(s)} CASH IF NOBODY WINS",
             Slip.Bulk => $"{Config.BulkTickets} EXTRA TICKETS ON {Config.BulkFrom}-{Config.BulkFrom + 9}",
-            _ => $"PRIZE +{Config.Rollover}"
+            _ => $"PRIZE +{Config.Rollover} FOR THE REST OF THE RUN"
         };
     }
 

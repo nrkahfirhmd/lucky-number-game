@@ -71,6 +71,9 @@ namespace NoWinners
         public bool Supplying { get; private set; }
         public bool Dealing => S.Overflow != null && !Live && Result == null;
         public bool Replacing => Punching >= 0 || Supplying || Dealing;
+        int confirm = -1; // The hand card picked to be replaced; a second click confirms.
+        public int ConfirmCard => Replacing ? confirm : -1;
+        public string SpecialName => S.Today switch { Special.Payday => "PAYDAY", Special.Telethon => "TELETHON", Special.Nephew => "MINISTER'S NEPHEW", _ => null };
         public Card IncomingCard => Dealing ? S.Overflow.Value : Supplying ? S.PreviewSupplier() : S.Rack[Punching];
         public int Stall { get; private set; } = -1;
         public string Station { get; private set; } = "monitor";
@@ -269,12 +272,12 @@ namespace NoWinners
 
         void NextWeek()
         {
-            Live = false; Stall = -1; Shredding = false; Supplying = false; Result = null; Preview = -1; PreviewRow = -1; Punching = -1; punched = 0;
+            Live = false; confirm = -1; Stall = -1; Shredding = false; Supplying = false; Result = null; Preview = -1; PreviewRow = -1; Punching = -1; punched = 0;
             Played.Clear();
             Landed.Clear();
             offAt = Time.time;
             S.StartWeek();
-            Headline($"WEEK {S.Week}");
+            Headline(S.Today switch { Special.Payday => $"WEEK {S.Week}: PAYDAY", Special.Telethon => $"WEEK {S.Week}: TELETHON", Special.Nephew => $"WEEK {S.Week}: NEPHEW", _ => Run.IsInspection(S.Week) ? $"WEEK {S.Week}: INSPECTION" : $"WEEK {S.Week}" });
             Station = "monitor";
             Refresh();
         }
@@ -282,7 +285,7 @@ namespace NoWinners
         public void TakeAction(DeskAction action)
         {
             if (Live || Result != null || S.Acted != null) { Sfx.Play("desk_denied"); return; }
-            S.SkipOverflow();
+            S.SkipOverflow(); confirm = -1;
             if (action == DeskAction.Shred) { Shredding = !Shredding; Supplying = false; Punching = -1; if (Shredding) Look("monitor"); Refresh(); return; } // Aim it at the board.
             if (action == DeskAction.Supplier && S.Hand.Count >= Config.HandLimit)
             {
@@ -293,12 +296,14 @@ namespace NoWinners
                 return;
             }
             if (!S.TakeAction(action)) { Sfx.Play("desk_denied"); return; }
+            Headline(action == DeskAction.Bribe ? $"BRIBE: +{Config.Bribe} CASH, PRIZE +{Config.Rollover}" : $"PHONE: +1 CARD, -{Config.SupplierCost} CASH");
             Refresh();
         }
 
         public void SupplyCard(int hand)
         {
             if (!S.TakeAction(DeskAction.Supplier, hand)) { Sfx.Play("desk_denied"); return; }
+            Headline($"PHONE: NEW CARD, -{Config.SupplierCost} CASH");
             Supplying = false;
             Refresh();
         }
@@ -306,6 +311,7 @@ namespace NoWinners
         public void ShredSquare(int n)
         {
             if (!S.TakeAction(DeskAction.Shred, n)) return;
+            Headline($"SHREDDED {n:00}: HOLDERS MOVED NEXT DOOR");
             Shredding = false; Preview = -1;
             Refresh();
         }
@@ -314,7 +320,7 @@ namespace NoWinners
         public void PickRack(int r)
         {
             if (Live || Result != null || r >= S.Rack.Count) { Sfx.Play("desk_denied"); return; }
-            S.SkipOverflow();
+            S.SkipOverflow(); confirm = -1;
             Punching = Punching == r ? -1 : r;
             Shredding = false; Supplying = false;
             Refresh();
@@ -338,7 +344,7 @@ namespace NoWinners
         public void GoLive()
         {
             if (Live || Result != null) return;
-            S.SkipOverflow();
+            S.SkipOverflow(); confirm = -1;
             S.TearSlip(); // An unread slip goes in the bin.
             S.TakeAction(DeskAction.LieLow); // No desk action: you lay low.
             S.DrawNumber();
@@ -466,12 +472,16 @@ namespace NoWinners
             Refresh();
         }
 
+        int lastSettingsSig;
+
         void Update()
         {
             if (Drawn != wasDrawn) { wasDrawn = Drawn; Refresh(); } // Cards wake up when the machine locks.
             ReadInput();
             CheckStall();
             StepTutorial();
+            int settingsSig = Mode == Mode.Settings ? System.HashCode.Combine(Sel, Prefs.Volume, Prefs.ReduceMotion, Prefs.Tutorial) : 0;
+            if (settingsSig != lastSettingsSig) { lastSettingsSig = settingsSig; screens.MarkDirty(); lastDraw = -100; }
             if (Time.unscaledTime - lastDraw > .1f) { screens.DrawTimed(); lastDraw = Time.unscaledTime; }
             AnimateMachine();
             bool printing = Room.Slip.gameObject.activeSelf && S.Pinned == Slip.None;
@@ -498,6 +508,7 @@ namespace NoWinners
             {
                 if (Mode == Mode.Settings) CloseSettings();
                 else if (Mode == Mode.Paused) Resume();
+                else if (Mode == Mode.Play && confirm >= 0 && Replacing) { confirm = -1; Refresh(); }
                 else if (Mode == Mode.Play && Shredding) { Shredding = false; Refresh(); }
                 else if (Mode == Mode.Play && Supplying) { Supplying = false; Refresh(); }
                 else if (Mode == Mode.Play && Dealing) { S.SkipOverflow(); Refresh(); }
@@ -578,7 +589,7 @@ namespace NoWinners
                 if (k.Op == 'J') row = Value / 10;
                 else if (!k.IsRandom) preview = Run.Apply(Value, k).Value;
             }
-            if (preview != Preview || row != PreviewRow) { Preview = preview; PreviewRow = row; lastDraw = -100; }
+            if (preview != Preview || row != PreviewRow) { Preview = preview; PreviewRow = row; lastDraw = -100; screens.MarkDirty(); }
             if (week > 0) { hover = WeekInfo(week); return; }
             if (c == Room.CalendarPaper && Station != "calendar" && !Shredding) { hover = "CALENDAR: click to read it up close."; return; }
             if (over >= 0 && S.Hand[over].IsSpecial) { hover = $"{S.Hand[over]}: {Explain(S.Hand[over])}."; return; }
@@ -598,10 +609,10 @@ namespace NoWinners
                 return;
             }
             if (c == null || Live) return;
-            if (c == Room.LiveSwitch) hover = "GO LIVE: the machine draws." + (S.Acted == null ? $" No desk action yet: you'll lie low, prize -{Config.LieLow}." : "");
-            else if (c == Room.ActionProps[DeskAction.Supplier]) hover = $"SUPPLIER: +1 card for {Config.SupplierCost} cash.";
-            else if (c == Room.ActionProps[DeskAction.Bribe]) hover = $"BRIBE: +{Config.Bribe} cash, but the prize rises {Config.Rollover} for the rest of the run.";
-            else if (c == Room.ActionProps[DeskAction.Shred]) hover = "SHRED: clear one square. Its holders rebuy next door, either side in the same row.";
+            if (c == Room.LiveSwitch) hover = "GO LIVE: the machine draws." + (S.Acted == null ? $" No desk action yet: you'll lie low: the prize drops {Config.LieLow} cash, never below {Config.Prize}." : "");
+            else if (c == Room.ActionProps[DeskAction.Supplier]) hover = $"PHONE (SUPPLIER): pay {Config.SupplierCost} cash for 1 extra card now. Needs more than {Config.SupplierCost} cash. One job a week.";
+            else if (c == Room.ActionProps[DeskAction.Bribe]) hover = $"ENVELOPE (BRIBE): take +{Config.Bribe} cash now. The prize you pay winners rises {Config.Rollover} for the rest of the run. One job a week.";
+            else if (c == Room.ActionProps[DeskAction.Shred]) hover = "SHREDDER: wipe one square to 0 so it is safe. Its holders rebuy on a square either side, so those get hotter. One job a week.";
         }
 
         // Public so a test can click real props through the real raycast.
@@ -625,9 +636,15 @@ namespace NoWinners
             if (c == null) return;
             if (c == Room.CalendarPaper && !Shredding && !Replacing) { Look("calendar"); return; }
             int card = Array.IndexOf(Room.CardColliders, c);
-            if (card >= 0 && card < S.Hand.Count && Dealing) { S.ReplaceOverflow(card); Refresh(); return; }
-            if (card >= 0 && card < S.Hand.Count && Supplying) { SupplyCard(card); return; }
-            if (card >= 0 && card < S.Hand.Count && Punching >= 0) { Repunch(card); return; }
+            if (card >= 0 && card < S.Hand.Count && Replacing && !(Punching >= 0 && S.Hand[card].IsSpecial))
+            {
+                if (confirm != card) { confirm = card; Refresh(); return; } // First click asks, second click does it.
+                confirm = -1;
+                if (Dealing) { S.ReplaceOverflow(card); Refresh(); }
+                else if (Supplying) SupplyCard(card);
+                else Repunch(card);
+                return;
+            }
             if (Station == "machine") { foreach (var kv in Room.ActionProps) if (c == kv.Value) TakeAction(kv.Key); return; } // The side table.
             if (Shredding && SquareAt(c, point) >= 0) { ShredSquare(SquareAt(c, point)); return; }
             if (c == Room.GoButton) { Go(); return; }

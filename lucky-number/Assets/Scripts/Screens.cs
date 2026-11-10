@@ -127,9 +127,9 @@ namespace NoWinners
             NumberBox(g, rolling ? $"{(int)(t / 60) * 37 % 100:00}" : $"{now:00}", Ink);
             Chain(g, Tokens(cards, steps), 184, Ink, Label);
             int h = S.Board[now], cost = S.CostOf(now, cards.Count);
-            if (S.IsFavour(now)) Verdict(g, cost <= 0 ? $"NEPHEW +{-cost}" : $"NEPHEW -{cost}", cost <= 0 ? Good : Label);
+            if (S.IsFavour(now)) Verdict(g, cost <= 0 ? $"NEPHEW +{-cost} CASH" : $"NEPHEW -{cost} CASH", cost <= 0 ? Good : Label);
             else if (h == 0) Verdict(g, "0 PERSON HOLDS", Good);
-            else Verdict(g, $"{h} HOLD -{cost}", Alarm);
+            else Verdict(g, $"{h} HOLD -{cost} CASH", Alarm);
         }
 
         void MonitorResult(Canvas8 g)
@@ -236,6 +236,7 @@ namespace NoWinners
 
         static void Verdict(Canvas8 g, string text, Color32 c, int sx = 2, int sy = 2)
         {
+            if (text.Length * 8 * sx > 256) { sx = 1; sy = 1; } // Long text shrinks to fit the chip.
             g.ChipFrame(352, 224, 272, 40, c, Bg);
             g.Centred(text, 244 - 4 * sy, c, sx, sy, 488);
         }
@@ -302,6 +303,11 @@ namespace NoWinners
             }
             else if (game.Live) Live(g, t);
             else OffAir(g);
+            if ((game.Live || Result != null) && S.Over == Ending.None && game.SpecialName != null)
+            {
+                g.Rect(80, 8, game.SpecialName.Length * 8 + 16, 16, Label);
+                g.Text(game.SpecialName, 88, 12, Bg);
+            }
             g.Apply();
         }
 
@@ -423,13 +429,17 @@ namespace NoWinners
         }
 
         public readonly Canvas8 Hud = new Canvas8(640, 360);
+        static readonly Color32 HGreen = H("#5BE37A"), HOrange = H("#FF8A3A");
         static readonly Color32 HInk = H("#F2F2E6"), HDim = H("#8A8A90"), HGold = H("#FFD23A"), HRed = H("#FF3B2F"), HPlate = H("#111111"), HLine = H("#4A4A50"),
             Clear = new Color32(0, 0, 0, 0);
 
         string lastHudHover;
         int lastHudCash = -1, lastHudWeek = -1, lastHudStreak = -1, lastHudPrize = -1;
         Mode lastHudMode = (Mode)(-1);
-        bool lastHudEndCard, lastHudReplacing;
+        bool lastHudEndCard, lastHudReplacing, lastHudBanner;
+        int lastHudConfirm = -1;
+        bool lastHudShred;
+        string lastHudCoach;
 
         public void DrawHud()
         {
@@ -437,7 +447,8 @@ namespace NoWinners
             bool coachActive = game.Tutorial != null;
             bool stateChanged = hudDirty || game.HoverText != lastHudHover || (S != null && (S.Cash != lastHudCash || S.Week != lastHudWeek
                 || S.Streak != lastHudStreak || S.Prize != lastHudPrize)) || game.Mode != lastHudMode
-                || game.EndCardUp != lastHudEndCard || game.Replacing != lastHudReplacing;
+                || game.EndCardUp != lastHudEndCard || game.Replacing != lastHudReplacing
+                || bannerActive != lastHudBanner || game.ConfirmCard != lastHudConfirm || game.Shredding != lastHudShred || game.Tutorial != lastHudCoach; // The frame a banner or coach ends must repaint, or it stays on screen.
 
             if (!bannerActive && !coachActive && !stateChanged) return;
 
@@ -447,6 +458,10 @@ namespace NoWinners
             lastHudMode = game.Mode;
             lastHudEndCard = game.EndCardUp;
             lastHudReplacing = game.Replacing;
+            lastHudBanner = bannerActive;
+            lastHudConfirm = game.ConfirmCard;
+            lastHudShred = game.Shredding;
+            lastHudCoach = game.Tutorial;
 
             var g = Hud;
             g.Fill(Clear);
@@ -459,15 +474,41 @@ namespace NoWinners
                 if (Result == null) Banner(g);
                 if (Result != null && S.Over != Ending.None && game.EndCardUp) EndCard(g);
                 if (game.Replacing) ReplacePrompt(g);
+                if (game.Replacing || game.Shredding) EscHint(g);
             }
             g.Apply();
+        }
+
+        // The printer's boost, always on screen: waiting on the reader, or taken and still to be met.
+        void SlipChip(Canvas8 g, int y)
+        {
+            bool taken = S.Pinned != Slip.None;
+            var slip = taken ? S.Pinned : S.Offer;
+            if (slip == Slip.None) return;
+            string text = (taken ? $"SLIP: {Slips.Name(slip)}, {Slips.Wants(slip)}" : $"NEW SLIP AT READER: {Slips.Name(slip)}").ToUpper();
+            if (text.Length > 46) text = text.Substring(0, 46); // Stays clear of the tutorial panel.
+            g.Chip(16, y, text.Length * 8 + 16, 24, taken ? HInk : HGold);
+            g.Text(text, 24, y + 4, HPlate, 1, 2);
         }
 
         void ReplacePrompt(Canvas8 g)
         {
             g.ChipFrame(160, 32, 320, 28, HGold, HPlate);
             g.Centred($"NEW CARD: {game.IncomingCard}", 38, HGold, 1, 2);
-            Outlined(g, "REPLACE TO", 188, HInk);
+            int pick = game.ConfirmCard;
+            if (pick >= 0 && pick < S.Hand.Count)
+            {
+                g.ChipFrame(120, 64, 400, 28, HRed, HPlate);
+                g.Centred($"REPLACE {S.Hand[pick]} WITH {game.IncomingCard}? CLICK AGAIN", 70, HRed, 1, 2);
+            }
+            else Outlined(g, "CLICK THE CARD TO REPLACE", 188, HInk);
+        }
+
+        // Bottom right, clear of the footnote.
+        void EscHint(Canvas8 g)
+        {
+            g.Chip(520, 332, 104, 20, HLine);
+            g.Text("ESC: CANCEL", 528, 338, HInk);
         }
 
         void Bar(Canvas8 g)
@@ -477,8 +518,8 @@ namespace NoWinners
             g.Rect(0, 24, 640, 2, HLine);
             var slots = new[]
             {
-                ("WEEK", $"{S.Week:00}/{Config.Weeks}", inspection ? HRed : HInk), ("CASH", S.Cash.ToString(), S.Cash < 0 ? HRed : HGold),
-                ("STREAK", $"{S.Streak:00}", HInk), ("PRIZE", S.Prize.ToString(), HGold),
+                ("WEEK", $"{S.Week:00}/{Config.Weeks}", inspection ? HRed : HInk), ("CASH", S.Cash.ToString(), S.Cash <= 0 ? HRed : HGreen),
+                ("STREAK", $"{S.Streak:00}", HInk), ("PRIZE", S.Prize.ToString(), HOrange),
             };
             for (int i = 0; i < slots.Length; i++)
             {
@@ -488,6 +529,7 @@ namespace NoWinners
                 g.Text(value, x + label.Length * 8 + 8, 4, c, 1, 2);
             }
             if (Result != null) return;
+            SlipChip(g, inspection || S.Today != Special.None ? 60 : 32); // Under the date chip, or on top when there is none.
             if (inspection)
             {
                 string badge = $"INSPECTION: {Config.InspectionCards} CARD ONLY";
@@ -794,6 +836,16 @@ namespace NoWinners
             return row * 4 + col + 1;
         }
 
+        // A red map pin stuck in the top of the tile.
+        static void Pin(Canvas8 c, int cx, int cy)
+        {
+            c.Rect(cx - 1, cy + 4, 3, 8, H("#3A3A40"));
+            for (int dy = -6; dy <= 6; dy++)
+                for (int dx = -6; dx <= 6; dx++)
+                    if (dx * dx + dy * dy <= 36) c.Rect(cx + dx, cy + dy, 1, 1, dx * dx + dy * dy > 25 ? H("#5A0F0A") : H("#D8281C"));
+            c.Rect(cx - 3, cy - 3, 2, 2, H("#FF9A8C"));
+        }
+
         void DrawCalendar()
         {
             var c = Room.Calendar;
@@ -805,12 +857,13 @@ namespace NoWinners
                 int x = CalX + (w - 1) % 4 * CalStepX, y = CalY + (w - 1) / 4 * CalStepY;
                 bool insp = Run.IsInspection(w);
                 var date = S.Dates[w];
-                c.Rect(x, y, CalW, CalH, H(insp ? "#B3241C" : date != Special.None ? "#E0A82E" : "#D0C8AE"));
+                c.Rect(x, y, CalW, CalH, H(insp ? "#B3241C" : date == Special.Payday ? "#3FA05A" : date == Special.Telethon ? "#A8489E" : date == Special.Nephew ? "#2E8FB8" : "#D0C8AE"));
+                if (date != Special.None) c.Frame(x, y, CalW, CalH, H("#1C1E28"), 2);
                 c.Centred($"{w}{(insp ? "!" : "")}", y + 24, H(insp ? "#F2F2E6" : "#1C1E28"), 2, 3, x + 28);
-                if (date != Special.None) c.Centred(date == Special.Payday ? "PAY" : date == Special.Telethon ? "TELE" : "NEPH", y + 56, H("#1C1E28"), 1, 1, x + 28);
+                if (date != Special.None) c.Centred(date == Special.Payday ? "PAY" : date == Special.Telethon ? "TELE" : "NEPH", y + 56, H("#F2F2E6"), 1, 1, x + 28);
                 if (w == game.CalendarWeek) c.Frame(x, y, CalW, CalH, H("#FFD23A"), 3); // Pointed at, in the close-up.
-                if (w < S.Week) c.Rect(x + 4, y + CalH - 10, CalW - 8, 4, H("#1C1E28"));
-                if (w == S.Week) c.Frame(x + 2, y + 2, CalW - 4, CalH - 4, H("#1A2AA8"), 4);
+                if (w < S.Week) for (int j = 0; j < CalH; j++) c.Rect(x + (CalH - 1 - j) * (CalW - 3) / CalH, y + j, 3, 1, H("#1C1E28")); // Struck through with a "/".
+                if (w == S.Week) Pin(c, x + CalW / 2, y + 8);
             }
             c.Apply();
         }
