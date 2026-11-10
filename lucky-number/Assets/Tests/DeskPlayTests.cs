@@ -160,6 +160,7 @@ namespace NoWinners.Tests
             yield return null;
             StringAssert.StartsWith("These are special cards", game.Tutorial);
             Assert.IsTrue(game.ClickBlocked(game.Room.ActionProps[DeskAction.Shred]), "the coach only lets you touch what it teaches");
+            Assert.IsTrue(game.ClickBlocked(game.Room.LiveSwitch), "the special-cards step points at the rack, not the lever");
             Assert.IsTrue(game.CanSkip, "a step can be skipped inside the same phase");
             game.SetTutorial(false); // The rest of the run is the props, not the coach.
             Assert.IsNull(game.Tutorial, "the tutorial was switched off");

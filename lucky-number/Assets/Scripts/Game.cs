@@ -873,7 +873,7 @@ namespace NoWinners
             new Step { Text = "These are special cards. Each one replaces a card in your hand to help you get a better outcome.", Phase = 3,
                 Looks = Side, Clicks = true, Done = g => g.punched > 0 || g.S.Rack.Count == 0,
                 Targets = g => (g.Punching < 0 ? g.Room.Rack.Take(g.S.Rack.Count).Select(Box)
-                    : Enumerable.Range(0, g.S.Hand.Count).Where(i => !g.S.Hand[i].IsSpecial).Select(i => Box(g.Room.Cards[i]))).Append(g.Room.LiveSwitch) },
+                    : Enumerable.Range(0, g.S.Hand.Count).Where(i => !g.S.Hand[i].IsSpecial).Select(i => Box(g.Room.Cards[i]))) },
             new Step { Text = "Ready? Pull the GO LIVE lever. The machine will draw a random number.", Phase = 3,
                 Looks = Side, Clicks = true, Done = g => g.Live, Targets = g => new[] { g.Room.LiveSwitch } },
         };
@@ -904,7 +904,8 @@ namespace NoWinners
         void StepTutorial()
         {
             if (tutorial >= Steps.Length) return;
-            while (tutorial < Steps.Length && (Steps[tutorial].Phase < Phase || Steps[tutorial].Done?.Invoke(this) == true)) tutorial++;
+            // Going live ends any off-air step still up: its action can't happen on air, so it would hold the coach (and the clicks) forever.
+            while (tutorial < Steps.Length && (Steps[tutorial].Phase < Phase || (Live && Steps[tutorial].Phase == 3) || Steps[tutorial].Done?.Invoke(this) == true)) tutorial++;
             if (tutorial == Steps.Length) { Prefs.Tutorial = false; Prefs.Save(); }
             if (Tutorial != null)
             {
