@@ -440,9 +440,9 @@ make('desk_plates', (m) => {
     m.at([x, 0.04, z], { rotX: -0.5 }, () => m.plane(0, 0, 0.001, w, h, 'plates', { uv: row(PLATES.indexOf(label)) }));
   });
   // Desk actions are explained on the staff notice, so only the controls keep a label.
-  // Two matching clusters: cards on the left (reader, eject), the show on the right (switch, red button).
+  // Two matching clusters: cards on the left (reader, undo), the show on the right (switch, red button).
   place('GO LIVE', 0.56, 0.005, 0.15, 0.025);
-  place('EJECT', -0.52, 0.2, 0.12, 0.02);
+  place('UNDO', -0.52, 0.2, 0.12, 0.02);
   place('ROLL IT', 0.52, 0.3, 0.17, 0.032);
 });
 
@@ -464,7 +464,7 @@ const layout = {
     Place('machine_base', [3.1, 0, -1.4], -Math.PI / 2),
     Place('machine_dome', [3.1, 0, -1.4], -Math.PI / 2),
     // Nothing sits in front of the monitor except the card hand and the low special-card rack, so the board is never covered.
-    // Left of the monitor: the card reader, which also prints the week's slip, with eject in front. Mug tucked behind.
+    // Left of the monitor: the card reader, which also prints the week's slip, with undo in front. Mug tucked behind.
     Place('card_reader', [-0.56, DESK_TOP, -3.0]),
     Place('card_reader_lamp', [-0.49, DESK_TOP + 0.05, -2.934]),
     Place('undo_button_base', [-0.52, DESK_TOP, -2.8]),
