@@ -77,13 +77,14 @@ namespace NoWinners
         Kind InRoom(Vector2 at)
         {
             if (game.Busy) return Kind.Arrow;
+            if (game.HudHit(at) != 0) return Kind.Hand;
             if (game.Result != null) return Kind.Hand; // Any click moves the result on.
             if (game.Station == "calendar" || game.Station == "slip") return Kind.Hand; // Any click puts it down, or takes or tears the slip.
             if (game.Station != "monitor" && game.Station != "machine") return Kind.Arrow;
             var c = game.Pick(at, out var point);
-            if (c == null) return Kind.Arrow;
+            if (c == null || game.ClickBlocked(c)) return Kind.Arrow; // The coach only lets you touch what it teaches.
             if (c == game.Room.MonitorScreen)
-                return game.Shredding && BoardSquare(c, point) ? Kind.Hand : Kind.Arrow;
+                return game.Shredding ? (BoardSquare(c, point) ? Kind.Hand : Kind.Arrow) : game.CanLeanIn ? Kind.Hand : Kind.Arrow;
             if (!Describe(c, point, out var name, out bool ok)) return Kind.Arrow;
             focus = c;
             focusOk = ok;
@@ -114,45 +115,44 @@ namespace NoWinners
             if (card >= 0 && card < s.Hand.Count && game.Dealing && offAir)
             {
                 ok = true;
-                name = (game.ConfirmCard == card ? "CLICK AGAIN TO CONFIRM: " : "") + $"REPLACE {s.Hand[card]} WITH {game.IncomingCard}";
+                name = $"CARD {s.Hand[card]}";
                 return true;
             }
             if (card >= 0 && card < s.Hand.Count && game.Supplying && offAir)
             {
                 ok = true;
-                name = (game.ConfirmCard == card ? "CLICK AGAIN TO CONFIRM: " : "") + $"REPLACE {s.Hand[card]} WITH {game.IncomingCard} (-{Config.SupplierCost} CASH)";
+                name = $"CARD {s.Hand[card]}";
                 return true;
             }
             if (card >= 0 && card < s.Hand.Count && game.Punching >= 0 && offAir)
             {
                 ok = !s.Hand[card].IsSpecial;
-                name = ok ? (game.ConfirmCard == card ? "CLICK AGAIN TO CONFIRM: " : "") + $"REPLACE {s.Hand[card]} WITH {game.IncomingCard}" : $"CARD {s.Hand[card]}: ALREADY A SPECIAL CARD";
+                name = $"CARD {s.Hand[card]}";
                 return true;
             }
             int rack = System.Array.IndexOf(r.RackColliders, c);
             if (rack >= 0)
             {
                 ok = offAir && game.Result == null;
-                name = $"RACK {s.Rack[rack]}" + (ok ? (game.Punching == rack ? ": PUT BACK" : ": REPLACE") : ": ADJUST CARD IN OFF AIR");
+                name = $"RACK {s.Rack[rack]}";
                 return true;
             }
             if (c == r.SlipCollider || c.transform == r.Slip)
             {
                 ok = true;
-                name = $"SLIP: {Slips.Name(s.Pinned != Slip.None ? s.Pinned : s.Offer)}" + (s.Pinned != Slip.None ? " TAKEN" : "");
+                name = $"SLIP: {Slips.Name(s.Pinned != Slip.None ? s.Pinned : s.Offer)}";
                 return true;
             }
             if (card >= 0)
             {
                 ok = game.CanPlay(card);
-                string why = offAir ? "ON AIR ONLY" : !game.Drawn ? "WAIT FOR THE DRAW" : game.Played.Count >= Run.CardLimit(s.Week) ? "CARD LIMIT" : "WON'T FIT";
-                name = $"CARD {s.Hand[card]}" + (ok ? "" : $": {why}");
+                name = $"CARD {s.Hand[card]}";
                 return true;
             }
-            if (c == r.GoButton) { ok = game.Drawn; name = ok ? $"ANNOUNCE {game.Value:00}" : offAir ? "RED BUTTON: GO LIVE FIRST" : "RED BUTTON: WAIT FOR THE DRAW"; return true; }
-            if (c == r.UndoButton) { ok = game.Played.Count > 0; name = ok ? "EJECT LAST CARD" : "EJECT: NO CARD IN"; return true; }
-            if (c == r.LiveSwitch) { ok = offAir; name = ok ? "GO LIVE" : "GO LIVE: ALREADY ON AIR"; return true; }
-            if (c == r.CalendarPaper) { ok = !game.Shredding; name = ok ? "CALENDAR" : "CALENDAR: SHREDDING"; return true; }
+            if (c == r.GoButton) { ok = game.Drawn; name = "RED BUTTON"; return true; }
+            if (c == r.UndoButton) { ok = game.Played.Count > 0; name = "UNDO BUTTON"; return true; }
+            if (c == r.LiveSwitch) { ok = offAir; name = "GO LIVE LEVER"; return true; }
+            if (c == r.CalendarPaper) { ok = !game.Shredding; name = "CALENDAR"; return true; }
             foreach (var kv in r.ActionProps)
             {
                 if (c != kv.Value) continue;
@@ -162,15 +162,9 @@ namespace NoWinners
                     DeskAction.Bribe => "ENVELOPE",
                     _ => "SHREDDER"
                 };
-                string job = kv.Key switch
-                {
-                    DeskAction.Supplier => $"BUY A CARD, -{Config.SupplierCost} CASH",
-                    DeskAction.Bribe => $"TAKE +{Config.Bribe} CASH, PRIZE +{Config.Rollover} FOR GOOD",
-                    _ => "CLEAR ONE SQUARE"
-                };
                 bool cancel = (kv.Key == DeskAction.Shred && game.Shredding) || (kv.Key == DeskAction.Supplier && game.Supplying);
                 ok = cancel || (offAir && s.Acted == null && (kv.Key != DeskAction.Supplier || s.Cash > Config.SupplierCost));
-                name = cancel ? $"{thing}: CANCEL" : ok ? $"{thing}: {job}" : $"{thing}: {(offAir ? (s.Acted != null ? "ONE JOB A WEEK" : "NOT ENOUGH CASH") : "OFF AIR ONLY")}";
+                name = thing;
                 return true;
             }
             name = null; ok = false;

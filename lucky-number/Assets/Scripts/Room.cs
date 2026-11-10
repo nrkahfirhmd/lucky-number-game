@@ -34,7 +34,7 @@ namespace NoWinners
         public const float SlipPinnedScale = .6f; // Pinned small on the monitor's top-right corner, clear of the board and the staff notice.
         public static readonly Quaternion SlipRestTurn = Quaternion.Euler(8, 0, 0), SlipPinnedTurn = Quaternion.Euler(0, 0, -8);
         public readonly Transform[] Balls = new Transform[14];
-        public readonly Collider MonitorScreen, GoButton, UndoButton, LiveSwitch, CalendarPaper;
+        public readonly Collider MonitorScreen, GoButton, UndoButton, LiveSwitch, CalendarPaper, ClockFace;
         public readonly Dictionary<DeskAction, Collider> ActionProps = new Dictionary<DeskAction, Collider>();
         public readonly Transform Lever, GoCap;
 
@@ -55,7 +55,12 @@ namespace NoWinners
             return m;
         }
 
-        public static Color32 Hex(string h) => ColorUtility.TryParseHtmlString(h, out var c) ? (Color32)c : default;
+        static readonly System.Collections.Generic.Dictionary<string, Color32> hexes = new System.Collections.Generic.Dictionary<string, Color32>();
+        public static Color32 Hex(string h) // Cached: screens call it per pixel row, and parsing showed up in redraws.
+        {
+            if (!hexes.TryGetValue(h, out var c)) hexes[h] = c = ColorUtility.TryParseHtmlString(h, out var p) ? (Color32)p : default;
+            return c;
+        }
 
         // Points one material on a prop at a texture the game draws on.
         void Show(string prop, string material, Texture tex, string slot = "_BaseMap")
@@ -165,6 +170,8 @@ namespace NoWinners
             LiveSwitch = Hit("LiveSwitch", new Vector3(.56f, .82f, 2.97f), new Vector3(.14f, .12f, .1f));
             // The calendar paper, 0.42 x 0.525 (wallPaper in build.mjs), as a unit box like the monitor so tiles map in local space.
             var cal = art.Find("calendar").GetComponentInChildren<Renderer>().bounds;
+            var clock = art.Find("clock").GetComponentInChildren<Renderer>().bounds; // Only so the tutorial can point at it.
+            ClockFace = Hit("ClockFace", clock.center, clock.size);
             CalendarPaper = Hit("CalendarPaper", new Vector3(cal.center.x, cal.min.y + .2625f, cal.min.z), new Vector3(.42f, .525f, .01f));
             // Desk actions sit on the side table, seen when you look right at the machine.
             ActionProps[DeskAction.Supplier] = Hit("Phone", new Vector3(1.75f, .85f, 1.9f), new Vector3(.17f, .1f, .22f));

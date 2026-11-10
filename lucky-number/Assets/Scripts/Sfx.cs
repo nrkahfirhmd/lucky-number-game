@@ -25,7 +25,9 @@ namespace NoWinners
         int sel;
         bool live, drawn, busy, shredding, revealed, endCard, started;
         DeskAction? acted;
-        int lost;
+        int lost, rack, punching = -1, confirm = -1, hand, introShown;
+        Slip offer, pinned;
+        bool leaning;
         WeekResult result;
         string station, hover;
         int preview = -1;
@@ -82,6 +84,8 @@ namespace NoWinners
         {
             AudioListener.volume = Prefs.Volume;
             duck.cutoffFrequency = game.Mode == Mode.Paused ? 900 : 22000;
+            if (game.IntroUp) { Intro(); return; } // The week's sounds wait for the backstory to end.
+            introShown = 0;
             if (!started) { started = true; Begin(); return; }
 
             Menus();
@@ -99,7 +103,7 @@ namespace NoWinners
                 else Play(name);
             }
 
-            if (Time.unscaledTime >= nextClock)
+            if (Time.unscaledTime >= nextClock && game.Tutorial == null) // Silent while the guide is up: the ticking made players feel rushed.
             {
                 nextClock = Time.unscaledTime + 1;
                 Play(tock ? "room_clock_tock" : "room_clock_tick");
@@ -142,7 +146,7 @@ namespace NoWinners
             {
                 StopShow();
                 Play("desk_calendar_flip");
-                Later(.35f, "desk_tickets_print");
+                if (s.Offer == Slip.None) Later(.35f, "desk_tickets_print"); // Otherwise the slip's print covers it.
                 Later(1.9f, "desk_cash_register");
                 if (Run.IsInspection(s.Week)) Later(.9f, "desk_inspection_stamp");
             }
@@ -157,9 +161,12 @@ namespace NoWinners
             {
                 if (s.Acted == DeskAction.Supplier) { Play("desk_supplier_phone"); if (s.LostCards > lost) Later(2.2f, "desk_card_lost"); }
                 else if (s.Acted == DeskAction.Bribe) Play("desk_bribe");
-                else Play("desk_shred");
+                else if (s.Acted == DeskAction.Shred) Play("desk_shred");
+                // Lie low is silent: it happens as the lever goes, under live_switch.
             }
             else if (game.Shredding != shredding) Play(game.Shredding ? "ui_menu_confirm" : "ui_menu_back");
+
+            Prep(s);
 
             if (game.Live && !live)
             {
@@ -219,6 +226,9 @@ namespace NoWinners
             else Later(.45f, a.Tier == Tier.Clean ? "result_clean" : a.Tier == Tier.Small ? "result_small" : "result_scandal");
             if (a.Bonus > 0) Later(1.3f, "result_live_bonus");
             if (s.Streak > r.StreakBefore) Later(1.7f, $"result_streak_{Mathf.Clamp(s.Streak, 1, 6)}");
+            if (a.SlipCash > 0 || a.Reward > 0) Later(2.1f, "desk_cash_register"); // A slip paid, or the minister did.
+            else if (a.Slip != Slip.None && !a.SlipMet) Later(2.1f, "desk_denied");
+            if (a.Gift != null) Later(2.6f, a.GiftLost ? "desk_card_lost" : "result_gift_card");
             if (s.Over == Ending.Lost)
             {
                 bool still = Prefs.ReduceMotion; // Screens.Collapse skips the squash with reduce motion.
@@ -227,9 +237,35 @@ namespace NoWinners
             }
         }
 
+        // Off-air prep: the slip, the rack and card swaps, and leaning in.
+        void Prep(Run s)
+        {
+            int handNow = HandSig(s);
+            if (s.Offer != Slip.None && offer == Slip.None) Later(.4f, "desk_slip_print"); // Game prints it from 0.4 s.
+            if (s.Pinned != Slip.None && pinned == Slip.None) Play("desk_slip_pin");
+            else if (s.Offer == Slip.None && offer != Slip.None && !game.Live) Play("desk_slip_tear"); // Going live bins it quietly.
+            if (game.Punching >= 0 && game.Punching != punching) Play("desk_rack_pick");
+            if (s.Rack.Count < rack && !game.Live) Play("desk_repunch");
+            else if (handNow != hand && s.Week == week && !game.Live && game.Result == null && s.Acted == acted && s.Rack.Count == rack) Play("desk_card_place");
+            if (game.ConfirmCard >= 0 && game.ConfirmCard != confirm) Play("ui_menu_move"); // First click asks.
+            if (game.Leaning != leaning) Play(game.Leaning ? "room_lean_in" : "room_lean_out");
+        }
+
+        static int HandSig(Run s) { int h = s.Hand.Count; foreach (var c in s.Hand) h = h * 31 + c.Op * 397 + c.X; return h; }
+
+        // The backstory: a swell per line, a sting on the last.
+        void Intro()
+        {
+            int n = game.IntroShown;
+            if (n > introShown) Play(n >= Game.IntroText.Length ? "intro_reveal" : "intro_line");
+            introShown = n;
+        }
+
         void Remember()
         {
             var s = game.S;
+            offer = s.Offer; pinned = s.Pinned; rack = s.Rack.Count; hand = HandSig(s);
+            punching = game.Punching; confirm = game.ConfirmCard; leaning = game.Leaning;
             mode = game.Mode; sel = game.Sel;
             week = s.Week; acted = s.Acted; lost = s.LostCards;
             live = game.Live; drawn = game.Drawn; busy = game.Busy; shredding = game.Shredding;

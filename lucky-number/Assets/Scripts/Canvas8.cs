@@ -21,6 +21,12 @@ namespace NoWinners
 
         public void Apply() { Tex.SetPixels32(px); Tex.Apply(mips); }
 
+        // Skip a redraw when what it shows hasn't changed. Upload and CPU mipmaps are the cost, not the drawing.
+        int sig;
+        bool signed;
+        public bool Unchanged(int s) { if (signed && s == sig) return true; sig = s; signed = true; return false; }
+        public void Invalidate() => signed = false;
+
         public void Rect(int x, int y, int w, int h, Color32 c)
         {
             int x1 = Math.Min(W, x + w), y1 = Math.Min(H, y + h);

@@ -154,7 +154,7 @@ namespace NoWinners
         readonly Random rng;
         public int Cash = Config.StartCash, Week, Streak, Best, Cleans, Smalls, Scandals, Bribes, Sold, LostCards;
         public int Calm; // Taken off the prize by lying low. Never takes it below the base.
-        public readonly List<Card> Rack = new List<Card> { new Card('S') }; // One SWAP, to teach re-punching in week 1.
+        public readonly List<Card> Rack = new List<Card> { new Card('S') }; // One SWAP, to teach re-punching in the first off air.
         public bool RedrawDealt; // REDRAW: at most one per run.
         public Slip Offer, Pinned; // The printer's slip this week, and the one you took.
         public Card? Supplied, Overflow; // The card waiting at the supplier or weekly deal when the hand is full.

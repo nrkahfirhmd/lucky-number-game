@@ -38,6 +38,13 @@ namespace NoWinners.Tests
             yield return new WaitForSeconds(seconds);
         }
 
+        [SetUp]
+        public void Quiet_start()
+        {
+            Game.ShowIntro = false;
+            PlayerPrefs.SetInt("tutorialDone", 1); // The coach limits clicks and pauses the clock: tests that aren't about it switch it off.
+        }
+
         [UnityTest]
         public IEnumerator The_tutorial_row_turns_the_coach_off_and_on()
         {
@@ -87,46 +94,18 @@ namespace NoWinners.Tests
             game.Click(game.MonitorToScreen(488, 200));
             Assert.AreEqual(Mode.Play, game.Mode);
             Assert.AreEqual(1, game.S.Week);
-            yield return Settle(.3f);
-            Shot(cam, "1-off-air");
-            StringAssert.StartsWith("OFF AIR", game.Tutorial, "the tutorial starts on a first run");
-
-            // Off air: number hidden, cards refuse, one desk action.
-            Assert.IsNull(game.S.Roll);
-            game.Click(At(game.Room.Cards[0]));
-            yield return null;
-            Assert.IsFalse(game.Busy, "cards wait for on air");
-            int cash = game.S.Cash;
-            game.Look("machine"); // The desk actions are on the side table.
-            yield return Settle();
-            Shot(cam, "1b-side-table");
-            StringAssert.StartsWith("SIDE TABLE", game.Tutorial);
-            CollectionAssert.Contains(game.TutorialTargets().ToList(), game.Room.ActionProps[DeskAction.Bribe], "the tutorial brackets the props it's about");
-            File.WriteAllBytes("Logs/Shots/1b-tutorial-hud.png", game.Screens.Hud.Tex.EncodeToPNG());
-            game.Click(At(game.Room.ActionProps[DeskAction.Bribe]));
-            Assert.AreEqual(cash + Config.Bribe, game.S.Cash);
-            Assert.AreEqual(DeskAction.Bribe, game.S.Acted);
-
-            // Shredder aims at a real square through the monitor.
-            game.S.Acted = null;
-            int held = Enumerable.Range(0, 100).First(n => game.S.Board[n] > 0);
-            game.Click(At(game.Room.ActionProps[DeskAction.Shred]));
-            Assert.IsTrue(game.Shredding);
-            Assert.AreEqual("monitor", game.Station, "shredding turns you to the board");
-            yield return Settle();
-            var screen = game.Room.MonitorScreen.transform;
-            var world = screen.TransformPoint(new Vector3((16 + held % 10 * 32 + 15) / 640f - .5f, .5f - (24 + held / 10 * 32 + 15) / 360f, 0));
-            int before = game.S.Board[held];
-            game.Click(cam.WorldToScreenPoint(world));
-            Assert.AreEqual(0, game.S.Board[held], $"shred clears square {held}");
-
-            // On air: seeded first roll, so one card reaches a free square.
-            game.Click(At(game.Room.LiveSwitch));
-            Assert.IsTrue(game.Live);
+            Assert.IsTrue(game.Live, "a run opens on air: the show first, the prep after");
             int roll = game.S.Roll.Value;
             yield return Settle(Game.LockSeconds + .2f);
             Assert.IsTrue(game.Drawn);
-            StringAssert.StartsWith("ON AIR", game.Tutorial, "going live skips the optional rack step");
+            Shot(cam, "1-on-air");
+            StringAssert.StartsWith("This is your monitor", game.Tutorial, "the tutorial starts on a first run");
+            Assert.IsFalse(game.CanLook("machine"), "the coach keeps the camera on the step");
+            Assert.IsFalse(game.CanLean);
+            for (int i = 0; i < 5; i++) game.TutorialSkip(); // TAB: one step each. Monitor, cards, bar, calendar, clock.
+            StringAssert.StartsWith("The number is out", game.Tutorial);
+
+            // On air: seeded first roll, so one card reaches a free square.
             int playable = Enumerable.Range(0, game.S.Hand.Count).First(game.CanPlay);
             Assert.AreEqual(Room.Hex("#D9C79A"), (Color32)game.Room.CardFaces[playable].Tex.GetPixel(127, 0), "playable cards light up when the machine locks");
             Shot(cam, "2-on-air");
@@ -142,40 +121,78 @@ namespace NoWinners.Tests
             Assert.IsFalse(game.Busy);
             Assert.AreEqual(to, game.Value);
             yield return null;
-            StringAssert.StartsWith("Press the red button", game.Tutorial);
-            CollectionAssert.Contains(game.TutorialTargets().ToList(), game.Room.GoButton);
             Shot(cam, "3-card-played");
-
-            // Eject and replay, then announce.
-            game.Click(At(game.Room.UndoButton));
-            Assert.AreEqual(roll, game.Value);
-            yield return null;
-            game.Click(At(game.Room.Cards[card]));
-            yield return Settle(Game.ReaderSeconds + .2f);
+            StringAssert.StartsWith("Happy with the number", game.Tutorial);
             game.Click(At(game.Room.GoButton));
             Assert.AreEqual(Tier.Clean, game.Result.Air.Tier);
             Assert.AreEqual(1, game.S.Streak);
             Assert.AreEqual("tv", game.Station);
             yield return Settle();
-            StringAssert.StartsWith("The TV", game.Tutorial);
             Assert.AreEqual(Room.Hex("#FFF3D6"), (Color32)tv.GetPixel(300, 359 - 160), "the result ball shows the number");
             Shot(cam, "4-tv-clean");
 
-            // The board and the week's receipt, then next week.
+            // The board and the week's receipt, then off air to prepare week 2.
             game.Click(Vector2.zero);
             Assert.AreEqual("monitor", game.Station);
             yield return Settle(.3f);
             game.Click(Vector2.zero);
-            Assert.AreEqual(2, game.S.Week);
+            Assert.AreEqual((2, false), (game.S.Week, game.Live), "after the show comes the prep for next week");
             yield return null;
-            Assert.IsNull(game.Tutorial, "the tutorial ends with week 1");
-            Assert.AreEqual(1, PlayerPrefs.GetInt("tutorialDone"), "and never comes back");
+            StringAssert.StartsWith("Next, the side table", game.Tutorial);
+            Assert.IsTrue(game.CanLook("machine"));
+            Assert.IsTrue(game.NavOn(1), "the > button is up for mouse-only play");
+
+            // Off air: number hidden, cards refuse, one desk action.
+            Assert.IsNull(game.S.Roll);
+            game.Click(At(game.Room.Cards[0]));
+            yield return null;
+            Assert.IsFalse(game.Busy, "cards wait for on air");
+            int cash = game.S.Cash;
+            game.Look("machine"); // The desk actions are on the side table.
+            yield return Settle();
+            Shot(cam, "1b-side-table");
+            StringAssert.StartsWith("You can use one helper", game.Tutorial);
+            CollectionAssert.Contains(game.TutorialTargets().ToList(), game.Room.ActionProps[DeskAction.Bribe], "the tutorial brackets the props it's about");
+            File.WriteAllBytes("Logs/Shots/1b-tutorial-hud.png", game.Screens.Hud.Tex.EncodeToPNG());
+            game.Click(At(game.Room.ActionProps[DeskAction.Bribe]));
+            Assert.AreEqual(cash + Config.Bribe, game.S.Cash);
+            Assert.AreEqual(DeskAction.Bribe, game.S.Acted);
+            yield return null;
+            StringAssert.StartsWith("These are special cards", game.Tutorial);
+            Assert.IsTrue(game.ClickBlocked(game.Room.ActionProps[DeskAction.Shred]), "the coach only lets you touch what it teaches");
+            Assert.IsTrue(game.CanSkip, "a step can be skipped inside the same phase");
+            game.SetTutorial(false); // The rest of the run is the props, not the coach.
+            Assert.IsNull(game.Tutorial, "the tutorial was switched off");
             if (hadTutorial == 0) PlayerPrefs.DeleteKey("tutorialDone");
 
-            // Next week: a forced scandal goes TV, then reveal on the monitor, then week 3.
+            // Shredder aims at a real square through the monitor.
+            game.S.Acted = null;
+            int held = Enumerable.Range(0, 100).First(n => game.S.Board[n] > 0);
+            game.Click(At(game.Room.ActionProps[DeskAction.Shred]));
+            Assert.IsTrue(game.Shredding);
+            Assert.AreEqual("monitor", game.Station, "shredding turns you to the board");
             yield return Settle();
+            var screen = game.Room.MonitorScreen.transform;
+            var world = screen.TransformPoint(new Vector3((16 + held % 10 * 32 + 15) / 640f - .5f, .5f - (24 + held / 10 * 32 + 15) / 360f, 0));
+            game.Click(cam.WorldToScreenPoint(world));
+            Assert.AreEqual(0, game.S.Board[held], $"shred clears square {held}");
+
+            // Week 2 on air: undo and replay, then a forced scandal goes TV, then reveal on the monitor, then week 3's prep.
             game.Click(At(game.Room.LiveSwitch));
+            Assert.IsTrue(game.Live);
+            roll = game.S.Roll.Value;
             yield return Settle(Game.LockSeconds + .2f);
+            card = Enumerable.Range(0, game.S.Hand.Count).FirstOrDefault(game.CanPlay);
+            if (game.CanPlay(card))
+            {
+                game.Click(At(game.Room.Cards[card]));
+                yield return Settle(Game.ReaderSeconds + .2f);
+                game.Click(At(game.Room.UndoButton));
+                Assert.AreEqual(roll, game.Value, "UNDO takes the card back");
+                yield return null;
+                game.Click(At(game.Room.Cards[card]));
+                yield return Settle(Game.ReaderSeconds + .2f);
+            }
             for (int n = 0; n < 100; n++) game.S.Board[n] = 4;
             game.S.Cash = 50000;
             game.Click(At(game.Room.GoButton));
@@ -214,7 +231,13 @@ namespace NoWinners.Tests
             File.WriteAllBytes("Logs/Shots/7-hud.png", game.Screens.Hud.Tex.EncodeToPNG());
             File.WriteAllBytes("Logs/Shots/7-tv.png", tv.EncodeToPNG());
             game.Click(Game.HudToScreen(320, 248));
-            Assert.AreEqual((1, Ending.None), (game.S.Week, game.S.Over), "play again starts a new run");
+            Assert.AreEqual((1, Ending.None, true), (game.S.Week, game.S.Over, game.Live), "play again starts a new run, on air");
+
+            // Through week 1's show to week 2's prep, so the lever is usable below.
+            yield return Settle(Game.LockSeconds + .2f);
+            game.S.Cash = 50000;
+            game.Go(); game.Go(); game.Go();
+            Assert.AreEqual((2, false), (game.S.Week, game.Live));
 
             // The look at the machine.
             game.Look("machine");
@@ -325,10 +348,14 @@ namespace NoWinners.Tests
             game = Object.FindAnyObjectByType<Game>();
             cam = Camera.main;
             game.Begin();
-            yield return Settle();
+            yield return Settle(Game.LockSeconds + .2f);
             LogAssert.NoUnexpectedReceived();
+            game.S.Cash = 50000;
+            game.Go(); game.Go(); game.Go(); // Week 1's show, then off air for week 2.
+            Assert.AreEqual((2, false), (game.S.Week, game.Live));
+            yield return Settle();
 
-            // Week 1: a SWAP in the rack. Pick it, then a hand card.
+            // The first off air: a SWAP in the rack. Pick it, then a hand card.
             Assert.IsTrue(game.Room.Rack[0].gameObject.activeSelf, "the starting SWAP is in the rack");
             Shot(cam, "v2-1-rack");
             game.Click(At(game.Room.Rack[0]));
@@ -345,7 +372,7 @@ namespace NoWinners.Tests
             int prize = game.S.Prize;
             game.Click(At(game.Room.LiveSwitch));
             Assert.AreEqual(DeskAction.LieLow, game.S.Acted);
-            Assert.AreEqual("ON AIR", game.Banner, "going live is a headline");
+            Assert.AreEqual("WEEK 2: ON AIR", game.Banner, "going live is a headline");
             yield return new WaitForSeconds(.4f);
             File.WriteAllBytes("Logs/Shots/v2-banner-hud.png", game.Screens.Hud.Tex.EncodeToPNG());
             Assert.AreEqual(Mathf.Max(Config.Prize, prize - Config.LieLow), game.S.Prize);
@@ -353,7 +380,7 @@ namespace NoWinners.Tests
             Assert.AreEqual(-1, game.Punching, "no re-punching on air");
             yield return Settle(Game.LockSeconds + .2f);
 
-            // A JAM on air: units redrawn, can't be ejected. Then announce without playing the SWAP: it's gone.
+            // A JAM on air: units redrawn, can't be undone. Then announce without playing the SWAP: it's gone.
             game.S.Hand[0] = new Card('J');
             game.Refresh();
             int tens = game.Value / 10;
@@ -361,7 +388,7 @@ namespace NoWinners.Tests
             yield return Settle(Game.ReaderSeconds + .2f);
             Assert.AreEqual(tens, game.Value / 10, "JAM keeps the tens");
             game.Click(At(game.Room.UndoButton));
-            Assert.AreEqual(1, game.Played.Count, "a random card can't be ejected");
+            Assert.AreEqual(1, game.Played.Count, "a random card can't be undone");
             game.S.Cash = 50000;
             game.Click(At(game.Room.GoButton));
             Assert.IsNotNull(game.Result);
@@ -370,7 +397,7 @@ namespace NoWinners.Tests
             game.Click(Vector2.zero);
             yield return Settle(.3f);
             game.Click(Vector2.zero);
-            Assert.AreEqual(2, game.S.Week);
+            Assert.AreEqual(3, game.S.Week);
 
             // The card reader prints a slip out of its slot. TAKE pins it to the monitor's edge.
             bool still = Prefs.ReduceMotion;
@@ -411,7 +438,7 @@ namespace NoWinners.Tests
             var screen = game.Room.MonitorScreen.transform;
             game.Click(cam.WorldToScreenPoint(screen.TransformPoint(new Vector3((16 + 5 * 32 + 15) / 640f - .5f, .5f - (24 + 4 * 32 + 15) / 360f, 0))));
             Assert.AreEqual((0, 4), (game.S.Board[45], game.S.Board[44] + game.S.Board[46]));
-            Assert.AreEqual(2, File.ReadAllLines(Path.Combine(Application.persistentDataPath, Game.LogFile)).Length, "header and one week logged");
+            Assert.AreEqual(3, File.ReadAllLines(Path.Combine(Application.persistentDataPath, Game.LogFile)).Length, "header and two weeks logged");
             File.Delete(Path.Combine(Application.persistentDataPath, Game.LogFile));
             Game.KeepLog = false;
             Game.LogFile = "weeks-v2.csv";
@@ -426,8 +453,7 @@ namespace NoWinners.Tests
             yield return null;
             game = Object.FindAnyObjectByType<Game>();
             cam = Camera.main;
-            game.Begin();
-            game.GoLive();
+            game.Begin(); // Opens on air.
             yield return Settle(Game.LockSeconds + .2f);
             InputSystem.settings.backgroundBehavior = InputSettings.BackgroundBehavior.IgnoreFocus;
             InputSystem.settings.editorInputBehaviorInPlayMode = InputSettings.EditorInputBehaviorInPlayMode.AllDeviceInputAlwaysGoesToGameView;
