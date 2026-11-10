@@ -58,12 +58,17 @@ Shader "No Winners/CRT Screen"
                 float3 col = float3(beam(uv - float2(ch, 0)).r, beam(uv).g, beam(uv + float2(ch, 0)).b);
 
                 float3 glow = 0;
-                for (int x = -3; x <= 3; x++) for (int y = -2; y <= 2; y++)
+                static const float2 kernel[9] = {
+                    float2(0, 0),
+                    float2(-2.5, 0), float2(2.5, 0), float2(0, -1.8), float2(0, 1.8),
+                    float2(-1.8, -1.3), float2(1.8, -1.3), float2(-1.8, 1.3), float2(1.8, 1.3)
+                };
+                for (int k = 0; k < 9; k++)
                 {
-                    float3 s = tex(uv + float2(x * 1.5 / V.x, y * 1.5 / V.y));
+                    float3 s = tex(uv + kernel[k] * float2(1.5 / V.x, 1.5 / V.y));
                     glow += s * smoothstep(0.35, 0.9, max(s.r, max(s.g, s.b)));
                 }
-                col += glow / 35.0 * _Bloom * 2.2 * _Strength;
+                col += glow / 9.0 * _Bloom * 2.2 * _Strength;
 
                 // The screen's size on the display changes, so rows and mask fade before they shimmer.
                 float rows = uv.y * V.y, rowFade = 1.0 - smoothstep(0.3, 0.6, fwidth(rows));

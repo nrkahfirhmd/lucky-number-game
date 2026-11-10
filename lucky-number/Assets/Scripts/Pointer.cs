@@ -39,13 +39,19 @@ namespace NoWinners
 
         void Awake()
         {
+            useGUILayout = false;
             game = GetComponent<Game>();
             arrow = Resources.Load<Texture2D>("Cursors/cursor_arrow");
             hand = Resources.Load<Texture2D>("Cursors/cursor_hand");
             no = Resources.Load<Texture2D>("Cursors/cursor_no");
         }
 
-        void OnDestroy() => Cursor.SetCursor(null, Vector2.zero, CursorMode.Auto);
+        void OnDestroy()
+        {
+            Cursor.SetCursor(null, Vector2.zero, CursorMode.Auto);
+            foreach (var pair in tags) if (pair.Value?.Tex != null) Object.Destroy(pair.Value.Tex);
+            tags.Clear();
+        }
 
         void LateUpdate()
         {
@@ -74,11 +80,11 @@ namespace NoWinners
             if (game.Result != null) return Kind.Hand; // Any click moves the result on.
             if (game.Station == "calendar" || game.Station == "slip") return Kind.Hand; // Any click puts it down, or takes or tears the slip.
             if (game.Station != "monitor" && game.Station != "machine") return Kind.Arrow;
-            if (!Physics.Raycast(Camera.main.ScreenPointToRay(at), out var hit, 10)) return Kind.Arrow;
-            var c = hit.collider;
+            var c = game.Pick(at, out var point);
+            if (c == null) return Kind.Arrow;
             if (c == game.Room.MonitorScreen)
-                return game.Shredding && BoardSquare(c, hit.point) ? Kind.Hand : Kind.Arrow;
-            if (!Describe(c, hit.point, out var name, out bool ok)) return Kind.Arrow;
+                return game.Shredding && BoardSquare(c, point) ? Kind.Hand : Kind.Arrow;
+            if (!Describe(c, point, out var name, out bool ok)) return Kind.Arrow;
             focus = c;
             focusOk = ok;
             Label = name;
@@ -98,7 +104,7 @@ namespace NoWinners
             var r = game.Room;
             var s = game.S;
             bool offAir = !game.Live;
-            int card = System.Array.FindIndex(r.Cards, t => t.GetComponent<Collider>() == c);
+            int card = System.Array.IndexOf(r.CardColliders, c);
             if (card == Room.CardCount - 1 && game.Replacing)
             {
                 ok = false;
@@ -123,14 +129,14 @@ namespace NoWinners
                 name = ok ? $"REPLACE {s.Hand[card]} WITH {game.IncomingCard}" : $"CARD {s.Hand[card]}: ALREADY A SPECIAL CARD";
                 return true;
             }
-            int rack = System.Array.FindIndex(r.Rack, t => t.GetComponent<Collider>() == c);
+            int rack = System.Array.IndexOf(r.RackColliders, c);
             if (rack >= 0)
             {
                 ok = offAir && game.Result == null;
                 name = $"RACK {s.Rack[rack]}" + (ok ? (game.Punching == rack ? ": PUT BACK" : ": REPLACE") : ": ADJUST CARD IN OFF AIR");
                 return true;
             }
-            if (c.transform == r.Slip)
+            if (c == r.SlipCollider || c.transform == r.Slip)
             {
                 ok = true;
                 name = $"SLIP: {Slips.Name(s.Pinned != Slip.None ? s.Pinned : s.Offer)}" + (s.Pinned != Slip.None ? " TAKEN" : "");
@@ -172,7 +178,8 @@ namespace NoWinners
             var hud = Game.ScreenToHud(at);
             if (game.Mode == Mode.Paused) return Any(3, i => Game.In(hud, 200, 168 + i * 40, 240, 32));
             if (game.Mode == Mode.Play) return Any(2, i => Game.In(hud, 176, 232 + i * 40, 288, 32));
-            if (!Physics.Raycast(Camera.main.ScreenPointToRay(at), out var hit, 10) || hit.collider != game.Room.MonitorScreen) return false;
+            var cam = game.Cam ?? Camera.main;
+            if (cam == null || !Physics.Raycast(cam.ScreenPointToRay(at), out var hit, 10) || hit.collider != game.Room.MonitorScreen) return false;
             var uv = hit.collider.transform.InverseTransformPoint(hit.point);
             var m = new Vector2Int(Mathf.FloorToInt((uv.x + .5f) * 640), Mathf.FloorToInt((.5f - uv.y) * 360));
             if (game.Mode == Mode.Title) return Any(3, i => Game.In(m, 352, 184 + i * 40, 272, 32));
@@ -185,7 +192,8 @@ namespace NoWinners
         void OnGUI()
         {
             if (focus == null || Event.current.type != EventType.Repaint) return;
-            var cam = Camera.main;
+            var cam = game.Cam ?? Camera.main;
+            if (cam == null) return;
             var b = focus.bounds;
             float x0 = float.MaxValue, y0 = float.MaxValue, x1 = float.MinValue, y1 = float.MinValue;
             for (int i = 0; i < 8; i++)
@@ -220,6 +228,11 @@ namespace NoWinners
         {
             string key = (ok ? "1" : "0") + text;
             if (tags.TryGetValue(key, out var c)) return c;
+            if (tags.Count >= 32)
+            {
+                foreach (var pair in tags) if (pair.Value?.Tex != null) Object.Destroy(pair.Value.Tex);
+                tags.Clear();
+            }
             c = new Canvas8(text.Length * 8 + 10, 14);
             c.Tex.filterMode = FilterMode.Point;
             c.Fill(Plate);

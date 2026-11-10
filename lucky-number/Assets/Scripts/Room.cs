@@ -19,11 +19,14 @@ namespace NoWinners
         public readonly Canvas8 GoPlate, UndoPlate, LivePlate;
         public readonly Canvas8[] CardFaces = new Canvas8[CardCount];
         public readonly Transform[] Cards = new Transform[CardCount];
+        public readonly Collider[] CardColliders = new Collider[CardCount];
         // v2: the special cards, leaning in their wooden rack under the monitor's chin, and the slip the card reader prints.
         public readonly Canvas8[] RackFaces = new Canvas8[Config.RackMax];
         public readonly Transform[] Rack = new Transform[Config.RackMax];
+        public readonly Collider[] RackColliders = new Collider[Config.RackMax];
         public readonly Canvas8 SlipPaper = new Canvas8(160, 192, mips: true);
         public readonly Transform Slip;
+        public readonly Collider SlipCollider;
         public const float SlipH = .24f;
         // The card reader doubles as the printer: the slip rises out of its top slot (reader x -0.645..-0.435, top y 0.907).
         // Positions match tools/art/build.mjs, with z flipped. The reader's slot is at y 0.855, z 3.01.
@@ -120,13 +123,16 @@ namespace NoWinners
 
             // Balls: one model, with the number picked by the texture offset.
             var ball = art.Find("ball");
+            var mpb = new MaterialPropertyBlock();
             for (int i = 0; i < Balls.Length; i++)
             {
                 var b = Object.Instantiate(ball, art);
                 b.gameObject.SetActive(true);
                 int n = (i * 7 + 3) % 100;
                 var r = b.GetComponentInChildren<Renderer>();
-                r.material.mainTextureOffset = new Vector2(n % 10 / 10f, .9f - n / 10 / 10f);
+                r.GetPropertyBlock(mpb);
+                mpb.SetVector("_BaseMap_ST", new Vector4(1, 1, n % 10 / 10f, .9f - n / 10 / 10f));
+                r.SetPropertyBlock(mpb);
                 Balls[i] = b;
             }
 
@@ -135,7 +141,7 @@ namespace NoWinners
             {
                 CardFaces[i] = new Canvas8(128, 176, mips: true);
                 var card = Plane(CardFaces[i].Tex, CardSize.x, CardSize.y, (i - 2.5f) * CardStep, CardBaseY, CardZ, CardEuler);
-                card.AddComponent<BoxCollider>();
+                CardColliders[i] = card.AddComponent<BoxCollider>();
                 Cards[i] = card.transform;
             }
 
@@ -144,12 +150,12 @@ namespace NoWinners
             {
                 RackFaces[i] = new Canvas8(128, 176, mips: true);
                 var r = Plane(RackFaces[i].Tex, .07f, .096f, -.39f + i * .09f, .828f, 2.885f, new Vector3(25, 0, 0));
-                r.AddComponent<BoxCollider>();
+                RackColliders[i] = r.AddComponent<BoxCollider>();
                 Rack[i] = r.transform;
             }
             // The slip. Pinned, it moves to the monitor's top-right edge.
             var slip = Plane(SlipPaper.Tex, .2f, SlipH, SlipRest.x, SlipRest.y, SlipRest.z, SlipRestTurn.eulerAngles);
-            slip.AddComponent<BoxCollider>();
+            SlipCollider = slip.AddComponent<BoxCollider>();
             Slip = slip.transform;
 
             // Click targets. A unit box scaled to the screen, so the board's square maths works in local space.

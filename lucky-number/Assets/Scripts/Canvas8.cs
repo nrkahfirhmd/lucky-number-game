@@ -58,15 +58,17 @@ namespace NoWinners
         }
 
         // Squashes the picture into h rows about the middle, black around it. Nearest row, so it stays on the grid.
+        Color32[] squashScratch;
         public void Squash(int h)
         {
-            var src = (Color32[])px.Clone();
+            if (squashScratch == null || squashScratch.Length != px.Length) squashScratch = new Color32[px.Length];
+            System.Array.Copy(px, squashScratch, px.Length);
             int top = H / 2 - h / 2;
             for (int b = 0; b < H; b++)
             {
                 int row = (H - 1 - b) * W;
                 if (b < top || b >= top + h) { for (int a = 0; a < W; a++) px[row + a] = new Color32(0, 0, 0, 255); continue; }
-                System.Array.Copy(src, (H - 1 - (b - top) * H / h) * W, px, row, W);
+                System.Array.Copy(squashScratch, (H - 1 - (b - top) * H / h) * W, px, row, W);
             }
         }
 

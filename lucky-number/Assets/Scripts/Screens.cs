@@ -43,6 +43,18 @@ namespace NoWinners
 
         public Screens(Game game) { this.game = game; Hud.Tex.filterMode = FilterMode.Point; }
 
+        bool monitorDirty = true, tvDirty = true, hudDirty = true;
+        int lastClockLeft = int.MinValue;
+        bool lastClockOn;
+        string lastMachineLabel;
+
+        public void MarkDirty()
+        {
+            monitorDirty = true;
+            tvDirty = true;
+            hudDirty = true;
+        }
+
         // Moving things, at the art's stepped frame rate.
         public void DrawTimed()
         {
@@ -57,6 +69,7 @@ namespace NoWinners
         // Things that only change when the game does.
         public void DrawDesk()
         {
+            MarkDirty();
             DrawCards();
             DrawRack();
             DrawSlip();
@@ -67,6 +80,10 @@ namespace NoWinners
 
         void DrawMonitor(float t)
         {
+            bool rolling = game.Live && game.Played.Count > 0 && !Still && t - game.LandedAt * 1000 < 300;
+            if (!monitorDirty && !rolling) return;
+            if (!rolling) monitorDirty = false;
+
             var g = Room.Monitor;
             g.Fill(Bg);
             g.Text("THE BIG DRAW", 16, 8, Label);
@@ -269,8 +286,12 @@ namespace NoWinners
 
         void DrawTv(float t)
         {
-            var g = Room.Tv;
             var m = game.Mode;
+            bool offAir = !game.Live && Result == null && m == Mode.Play;
+            if (offAir && !tvDirty) return;
+            if (offAir) tvDirty = false;
+
+            var g = Room.Tv;
             if (m == Mode.Start || m == Mode.Title || (m == Mode.Settings && game.SettingsFrom == Mode.Title)) TitleCard(g, t);
             else if (Result != null)
             {
@@ -405,8 +426,28 @@ namespace NoWinners
         static readonly Color32 HInk = H("#F2F2E6"), HDim = H("#8A8A90"), HGold = H("#FFD23A"), HRed = H("#FF3B2F"), HPlate = H("#111111"), HLine = H("#4A4A50"),
             Clear = new Color32(0, 0, 0, 0);
 
+        string lastHudHover;
+        int lastHudCash = -1, lastHudWeek = -1, lastHudStreak = -1, lastHudPrize = -1;
+        Mode lastHudMode = (Mode)(-1);
+        bool lastHudEndCard, lastHudReplacing;
+
         public void DrawHud()
         {
+            bool bannerActive = game.Banner != null && (Time.time - game.BannerAt <= 2.2f);
+            bool coachActive = game.Tutorial != null;
+            bool stateChanged = hudDirty || game.HoverText != lastHudHover || (S != null && (S.Cash != lastHudCash || S.Week != lastHudWeek
+                || S.Streak != lastHudStreak || S.Prize != lastHudPrize)) || game.Mode != lastHudMode
+                || game.EndCardUp != lastHudEndCard || game.Replacing != lastHudReplacing;
+
+            if (!bannerActive && !coachActive && !stateChanged) return;
+
+            hudDirty = false;
+            lastHudHover = game.HoverText;
+            if (S != null) { lastHudCash = S.Cash; lastHudWeek = S.Week; lastHudStreak = S.Streak; lastHudPrize = S.Prize; }
+            lastHudMode = game.Mode;
+            lastHudEndCard = game.EndCardUp;
+            lastHudReplacing = game.Replacing;
+
             var g = Hud;
             g.Fill(Clear);
             if (game.Mode == Mode.Paused) PauseScreen(g);
@@ -509,7 +550,7 @@ namespace NoWinners
             if (left) { g.Chip(8, 168, 48, 24, c); g.Text("< A", 12, 172, HPlate, 1, 2); }
             if (right) { g.Chip(584, 168, 48, 24, c); g.Text("D >", 588, 172, HPlate, 1, 2); }
 
-            var lines = Wrap(text, 27).ToList();
+            var lines = CachedWrap(text, 27);
             int top = 32, ph = 32 + lines.Count * 12 + 16;
             g.ChipFrame(400, top, 232, ph, HGold, HPlate);
             g.Text($"TUTORIAL {game.TutorialStep + 1}/{Game.TutorialSteps}", 412, top + 10, HGold);
@@ -526,7 +567,7 @@ namespace NoWinners
 
         static void Footnote(Canvas8 g, string text)
         {
-            var lines = Wrap(text, 76).ToList();
+            var lines = CachedWrap(text, 76);
             int y = 348 - (lines.Count - 1) * 12;
             for (int i = 0; i < lines.Count; i++) Outlined(g, lines[i], y + i * 12, HInk);
         }
@@ -591,9 +632,12 @@ namespace NoWinners
 
         void DrawClock()
         {
-            var c = Room.Clock;
             bool on = game.Live && Result == null;
             int left = Mathf.CeilToInt(Config.Target - game.LiveSeconds);
+            if (on == lastClockOn && left == lastClockLeft) return;
+            lastClockOn = on;
+            lastClockLeft = left;
+            var c = Room.Clock;
             c.Fill(H("#080808"));
             c.Centred(on ? "ON AIR" : "OFF AIR", 6, H(on ? "#ff3b2f" : "#8a8a90"));
             c.Centred(!on ? "--" : left > 0 ? $"{left:00}" : "LATE", 24, H(on && left <= 5 ? "#ff3b2f" : "#ffd23a"), 4 - (on && left <= 0 ? 1 : 0));
@@ -602,10 +646,13 @@ namespace NoWinners
 
         void DrawMachineFace()
         {
+            int? shown = Result != null ? Result.From : S.Roll;
+            bool rolling = Time.time - game.RolledAt < Game.LockSeconds;
+            string label = rolling ? $"{Random.Range(0, 100):00}" : shown == null ? "--" : $"{shown:00}";
+            if (!rolling && label == lastMachineLabel) return;
+            lastMachineLabel = label;
             var c = Room.MachineFace;
             c.Fill(H("#080808"));
-            int? shown = Result != null ? Result.From : S.Roll;
-            string label = Time.time - game.RolledAt < Game.LockSeconds ? $"{Random.Range(0, 100):00}" : shown == null ? "--" : $"{shown:00}";
             c.Centred(label, 16, H("#ffd23a"), 5);
             c.Apply();
         }
@@ -675,6 +722,19 @@ namespace NoWinners
                 c.Chip(84, 154, 68, 30, red); c.Centred("TEAR", 161, H("#F4EFD8"), 2, 2, 118);
             }
             c.Apply();
+        }
+
+        static readonly Dictionary<string, List<string>> WrapCache = new Dictionary<string, List<string>>();
+        static List<string> CachedWrap(string text, int width)
+        {
+            if (string.IsNullOrEmpty(text)) return new List<string>();
+            string key = width + ":" + text;
+            if (!WrapCache.TryGetValue(key, out var lines))
+            {
+                lines = Wrap(text, width).ToList();
+                WrapCache[key] = lines;
+            }
+            return lines;
         }
 
         static IEnumerable<string> Wrap(string text, int width)

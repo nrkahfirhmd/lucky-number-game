@@ -85,6 +85,7 @@ namespace NoWinners
         Screens screens;
         public Screens Screens => screens;
         Camera cam;
+        public Camera Cam => cam;
         Vector3 camPos = Eye, camLook = LookMonitor;
         Vector2 pointer;
         bool lean, wasDrawn;
@@ -105,6 +106,7 @@ namespace NoWinners
 
         void Awake()
         {
+            useGUILayout = false;
             cam = Camera.main;
             cam.fieldOfView = 50;
             cam.nearClipPlane = .05f;
@@ -522,12 +524,25 @@ namespace NoWinners
             if (mouse.leftButton.wasPressedThisFrame) Click(at);
         }
 
-        Collider Pick(Vector2 at, out Vector3 point)
+        int lastPickFrame = -1;
+        Vector2 lastPickAt;
+        Collider lastPickCollider;
+        Vector3 lastPickPoint;
+
+        public Collider Pick(Vector2 at, out Vector3 point)
         {
-            Physics.SyncTransforms();
+            if (Time.frameCount == lastPickFrame && at == lastPickAt)
+            {
+                point = lastPickPoint;
+                return lastPickCollider;
+            }
             bool hit = Physics.Raycast(cam.ScreenPointToRay(at), out var h, 10);
             point = hit ? h.point : default;
-            return hit ? h.collider : null;
+            lastPickFrame = Time.frameCount;
+            lastPickAt = at;
+            lastPickPoint = point;
+            lastPickCollider = hit ? h.collider : null;
+            return lastPickCollider;
         }
 
         int SquareAt(Collider c, Vector3 point)
@@ -553,8 +568,8 @@ namespace NoWinners
             if (week != CalendarWeek) { CalendarWeek = week; Refresh(); }
             int preview = Shredding ? SquareAt(c, point) : -1;
             hover = null;
-            int over = c == null ? -1 : Array.FindIndex(Room.Cards, t => t.GetComponent<Collider>() == c);
-            int rack = c == null ? -1 : Array.FindIndex(Room.Rack, t => t.GetComponent<Collider>() == c);
+            int over = c == null ? -1 : Array.IndexOf(Room.CardColliders, c);
+            int rack = c == null ? -1 : Array.IndexOf(Room.RackColliders, c);
             hoverCard = over;
             int row = -1;
             if (over >= 0 && CanPlay(over))
@@ -609,7 +624,7 @@ namespace NoWinners
             var c = Pick(at, out var point);
             if (c == null) return;
             if (c == Room.CalendarPaper && !Shredding && !Replacing) { Look("calendar"); return; }
-            int card = Array.FindIndex(Room.Cards, t => t.GetComponent<Collider>() == c);
+            int card = Array.IndexOf(Room.CardColliders, c);
             if (card >= 0 && card < S.Hand.Count && Dealing) { S.ReplaceOverflow(card); Refresh(); return; }
             if (card >= 0 && card < S.Hand.Count && Supplying) { SupplyCard(card); return; }
             if (card >= 0 && card < S.Hand.Count && Punching >= 0) { Repunch(card); return; }
@@ -619,7 +634,7 @@ namespace NoWinners
             if (c == Room.UndoButton) { Undo(); return; }
             if (c == Room.LiveSwitch) { GoLive(); return; }
             foreach (var kv in Room.ActionProps) if (c == kv.Value) { TakeAction(kv.Key); return; }
-            int rack = Array.FindIndex(Room.Rack, t => t.GetComponent<Collider>() == c);
+            int rack = Array.IndexOf(Room.RackColliders, c);
             if (rack >= 0) { PickRack(rack); return; }
             if (c.transform == Room.Slip) { Look("slip"); return; } // Read it up close first, like the calendar.
             if (card >= 0 && card < S.Hand.Count) PlayCard(card);
@@ -751,13 +766,29 @@ namespace NoWinners
         public string Tutorial => Mode == Mode.Play && tutorial < Steps.Length ? Steps[tutorial].text : null;
         public IEnumerable<Collider> TutorialTargets() => Tutorial == null ? Enumerable.Empty<Collider>() : Steps[tutorial].targets(this).Where(c => c != null);
 
+        Vector2 lastHudPointer;
+        Vector3 lastHudCamPos;
+        int lastHudStep = -1;
+        float lastHudTime;
+
         void StepTutorial()
         {
             if (tutorial >= Steps.Length) return;
             if (Keyboard.current != null && Keyboard.current.tabKey.wasPressedThisFrame) tutorial = Steps.Length;
             while (tutorial < Steps.Length && Steps[tutorial].done(this)) tutorial++;
             if (tutorial == Steps.Length) { Prefs.Tutorial = false; Prefs.Save(); }
-            if (Tutorial != null) screens.DrawHud(); // Every frame: the brackets follow the swaying camera.
+            if (Tutorial != null)
+            {
+                bool moved = (pointer - lastHudPointer).sqrMagnitude > 0.0001f || (cam.transform.position - lastHudCamPos).sqrMagnitude > 0.00001f;
+                if (tutorial != lastHudStep || (moved && Time.unscaledTime - lastHudTime > 0.033f))
+                {
+                    screens.DrawHud();
+                    lastHudPointer = pointer;
+                    lastHudCamPos = cam.transform.position;
+                    lastHudStep = tutorial;
+                    lastHudTime = Time.unscaledTime;
+                }
+            }
         }
 
         void OnGUI()
