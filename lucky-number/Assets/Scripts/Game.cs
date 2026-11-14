@@ -24,7 +24,9 @@ namespace NoWinners
     public class WeekResult
     {
         public float At; // When it aired: the TV and the end cards time from here.
-        public int Number, From, FromHolders, Cards, CashBefore, StreakBefore; // FromHolders: tickets on the honest number, for the street interview.
+        public int Number, From, Cards, CashBefore, StreakBefore;
+        public int Asked = -1, AskedHolders; // The street interview's square after a clean draw, and its tickets. See Screens.Asked.
+        public float AskAt; // When the TV cuts to the interview.
         public string Route, Line;
         public List<Card> Path, BestPath; // Copied at air time: the hand is trimmed right after.
         public List<int> Steps; // The number after each played card. JAM and REDRAW are random, so they're kept, not recomputed.
@@ -448,6 +450,8 @@ namespace NoWinners
         {
             if (Busy || Mode != Mode.Play) return;
             if (Result != null && S.Over != Ending.None) return; // The end card's buttons take it from here.
+            // A press before the cut jumps to the street interview, so it's never skipped; the next press reveals.
+            if (Result != null && !Result.Revealed && Time.time < Result.AskAt && Screens.Interview(Result, S.Week) != null) { Result.AskAt = Time.time; return; }
             if (Result != null && !Result.Revealed)
             {
                 Result.Revealed = true; // The board, and the HUD's receipt for the week.
@@ -465,12 +469,12 @@ namespace NoWinners
         void Air()
         {
             var best = S.BestRoute();
-            int from = S.Roll.Value, number = Value, rate = S.Prize;
+            int from = S.Roll.Value, number = Value, rate = S.Prize, asked = Screens.Asked(S.Board, from, number);
             float seconds = LiveSeconds;
             string steps = string.Join(" ", best.Path.Select(i => S.Hand[i].ToString()));
             Result = new WeekResult
             {
-                At = Time.time, Number = number, From = from, FromHolders = S.Board[from], Best = best, Cards = Played.Count,
+                At = Time.time, Number = number, From = from, Asked = asked, AskedHolders = asked >= 0 ? S.Board[asked] : 0, AskAt = Time.time + Screens.InterviewDelay, Best = best, Cards = Played.Count,
                 Route = string.Join(" ", Played.Select(i => S.Hand[i].ToString())),
                 Line = steps.Length > 0 ? $"{from:00} {steps} = {best.To:00}" : $"{from:00} AS DRAWN",
                 Path = Played.Select(i => S.Hand[i]).ToList(),

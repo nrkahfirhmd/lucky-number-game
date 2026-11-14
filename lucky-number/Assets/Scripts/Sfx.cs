@@ -29,7 +29,7 @@ namespace NoWinners
         int lost, rack, punching = -1, confirm = -1, hand, introShown;
         Slip offer, pinned;
         bool leaning;
-        WeekResult result;
+        WeekResult result, asked;
         string station, hover;
         int preview = -1;
         float volume, musicVolume, musicLevel, nextClock, lastFlip, musicAt = float.MaxValue;
@@ -213,6 +213,8 @@ namespace NoWinners
             Clock();
 
             if (game.Result != null && result != game.Result) Announce();
+            var r = game.Result; // The TV cuts to the street, on time or on the red button.
+            if (r != null && r != asked && Time.time >= r.AskAt && game.S.Over == Ending.None && Screens.Interview(r, game.S.Week) != null) { asked = r; Play("stall_interview"); }
             if (game.Result != null && game.Result.Revealed && !revealed && game.Result.Air.Pay > 0)
             {
                 Play("result_reveal_beep");
@@ -251,7 +253,6 @@ namespace NoWinners
             if (a.SlipCash > 0 || a.Reward > 0) Later(2.1f, "desk_cash_register"); // A slip paid, or the minister did.
             else if (a.Slip != Slip.None && !a.SlipMet) Later(2.1f, "desk_denied");
             if (a.Gift != null) Later(2.6f, a.GiftLost ? "desk_card_lost" : "result_gift_card");
-            if (s.Over == Ending.None && Screens.Interview(r, s.Week) != null) Later(Screens.InterviewDelay, "stall_interview"); // The TV cuts to the street.
             if (s.Over == Ending.Lost)
             {
                 bool still = Prefs.ReduceMotion; // Screens.Collapse skips the squash with reduce motion.

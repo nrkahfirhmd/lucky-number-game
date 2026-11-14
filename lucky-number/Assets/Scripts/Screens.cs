@@ -374,7 +374,7 @@ namespace NoWinners
 
         void ResultTv(Canvas8 g, float t)
         {
-            if (Interview(Result, S.Week) is { } iv && Time.time - Result.At >= InterviewDelay) { InterviewTv(g, t, iv); return; }
+            if (Time.time >= Result.AskAt && Interview(Result, S.Week) is { } iv) { InterviewTv(g, t, iv); return; }
             var a = Result.Air;
             string n = $"{Result.Number:00}";
             string ticker = a.Reward > 0
@@ -403,8 +403,8 @@ namespace NoWinners
             g.Centred(subtext, 228, Ink);
         }
 
-        // Street interview, cut to after the result card. Who speaks follows the result: a clean rig asks someone who held
-        // the honest number you rigged away, a win asks a winner, a nephew hit asks the nephew. Fixed per week and number.
+        // Street interview, cut to after the result card every week. Who speaks follows the result: a clean rig asks someone who
+        // held the honest number you rigged away, else the nearest ticket holder; a win asks a winner; a nephew hit, the nephew.
         public const float InterviewDelay = 2.6f;
         public struct Vox { public string Name, Held, Quote; public int Who; public bool Happy; }
         static readonly (string Name, Color32 Skin, Color32 Hair, Color32 Coat, int Style, bool Glasses, bool Tache)[] People =
@@ -437,7 +437,17 @@ namespace NoWinners
             "I'VE STARTED A PETITION. IT'S ON {0}. LIKE MY TICKET.",
             "MY WHOLE STREET HAD {0}. THE STREET IS FURIOUS.",
             "SOMEONE IN THAT BUILDING KNOWS SOMETHING. I CAN FEEL IT.",
-            "{0} CAME UP. I SAW IT. THEN THE TELLY SAID {1}. EXPLAIN THAT.",
+            "{1} AGAIN? WHO HAS {1}? SHOW ME ONE PERSON.",
+        };
+        // Nobody held the honest number, or nothing was rigged: the nearest ticket holder, who just missed.
+        static readonly string[] NearQuotes =
+        {
+            "I HAD {0}. IT WAS {1}. SO CLOSE I COULD TASTE IT.",
+            "I ALWAYS PLAY {0}. NEXT WEEK IT'S DEFINITELY {0}.",
+            "MY HOROSCOPE SAID {0}. I'M CANCELLING THE PAPER.",
+            "I DON'T EVEN LIKE MONEY. I JUST LIKE {0}.",
+            "WHO HAS {1}? HONESTLY, WHO? I'VE NEVER MET ANYONE.",
+            "{0}. MY LUCKY NUMBER. CLEARLY NOT VERY LUCKY.",
         };
         static readonly string[] WinQuotes =
         {
@@ -468,16 +478,26 @@ namespace NoWinners
             var a = r?.Air;
             if (a == null) return null;
             bool clean = a.Tier == Tier.Clean && a.Reward == 0;
-            int n = clean ? r.From : r.Number, k = week * 7 + n;
+            int n = clean ? r.Asked : r.Number, k = week * 7 + n;
             string Say(string[] q) => "\"" + string.Format(q[k % q.Length], $"{n:00}", $"{r.Number:00}") + "\"";
             string On(int h, string what) => h == 1 ? $"THE ONLY {what} ON {n:00}" : $"ONE OF {h} {what}S ON {n:00}";
             Vox Person(int who, string held, string[] q, bool happy) => new Vox { Who = who, Name = People[who].Name, Held = held, Quote = Say(q), Happy = happy };
             if (a.Reward > 0) return Person(NephewWho, "HIS UNCLE IS THE MINISTER", NephewQuotes, true);
             if (clean)
-                return r.From == r.Number || r.FromHolders <= 0 ? (Vox?)null
-                    : Person(k % Public, On(r.FromHolders, "TICKET"), r.StreakBefore + 1 >= 5 ? AngryQuotes : CleanQuotes, false);
+                return r.Asked < 0 ? (Vox?)null : Person(k % Public, On(r.AskedHolders, "TICKET"),
+                    r.StreakBefore + 1 >= 5 ? AngryQuotes : r.Asked == r.From ? CleanQuotes : NearQuotes, false);
             if (a.Holders <= 0) return null;
             return Person(k % Public, On(a.Holders, "WINNER"), a.Tier == Tier.Small ? WinQuotes : ScandalQuotes, true);
+        }
+
+        // The honest number if someone held it and it was rigged away, else the nearest held square. -1 if the board is empty.
+        public static int Asked(int[] board, int from, int number)
+        {
+            if (from != number && board[from] > 0) return from;
+            for (int d = 1; d < 100; d++)
+                foreach (int s in new[] { from - d, from + d })
+                    if (s >= 0 && s < 100 && s != number && board[s] > 0) return s;
+            return -1;
         }
 
         static void InterviewTv(Canvas8 g, float t, Vox v)

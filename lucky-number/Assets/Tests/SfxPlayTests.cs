@@ -52,6 +52,9 @@ namespace NoWinners.Tests
             Heard(game, tier == Tier.Clean ? "result_clean" : tier == Tier.Small ? "result_small" : "result_scandal");
 
             // After the show: off air, preparing next week.
+            game.Go(); // Cut to the street interview.
+            yield return null;
+            Heard(game, "stall_interview");
             game.S.Cash = 50000;
             game.Go(); game.Go();
             yield return null;

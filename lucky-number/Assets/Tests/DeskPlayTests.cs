@@ -131,6 +131,14 @@ namespace NoWinners.Tests
             Assert.AreEqual(Room.Hex("#FFF3D6"), (Color32)tv.GetPixel(300, 359 - 160), "the result ball shows the number");
             Shot(cam, "4-tv-clean");
 
+            // A click before the cut jumps to the street interview, so it's never missed.
+            game.Click(Vector2.zero);
+            Assert.AreEqual(("tv", false), (game.Station, game.Result.Revealed));
+            Assert.IsNotNull(Screens.Interview(game.Result, game.S.Week));
+            yield return null;
+            Assert.AreEqual(Room.Hex("#FFC93C"), (Color32)tv.GetPixel(300, 359 - 240), "the interview's name band");
+            Shot(cam, "4-tv-interview");
+
             // The board and the week's receipt, then off air to prepare week 2.
             game.Click(Vector2.zero);
             Assert.AreEqual("monitor", game.Station);
@@ -200,6 +208,7 @@ namespace NoWinners.Tests
             Assert.AreEqual(Tier.Scandal, game.Result.Air.Tier);
             yield return Settle();
             Shot(cam, "5-tv-scandal");
+            game.Click(Vector2.zero); // To the interview: a winner.
             game.Click(Vector2.zero);
             Assert.AreEqual("monitor", game.Station);
             Assert.IsTrue(game.Result.Revealed);
@@ -237,7 +246,7 @@ namespace NoWinners.Tests
             // Through week 1's show to week 2's prep, so the lever is usable below.
             yield return Settle(Game.LockSeconds + .2f);
             game.S.Cash = 50000;
-            game.Go(); game.Go(); game.Go();
+            game.Go(); game.Go(); game.Go(); game.Go(); // Announce, interview, reveal, next week.
             Assert.AreEqual((2, false), (game.S.Week, game.Live));
 
             // The look at the machine.
@@ -352,7 +361,7 @@ namespace NoWinners.Tests
             yield return Settle(Game.LockSeconds + .2f);
             LogAssert.NoUnexpectedReceived();
             game.S.Cash = 50000;
-            game.Go(); game.Go(); game.Go(); // Week 1's show, then off air for week 2.
+            game.Go(); game.Go(); game.Go(); game.Go(); // Announce, interview, reveal, next week. // Week 1's show, then off air for week 2.
             Assert.AreEqual((2, false), (game.S.Week, game.Live));
             yield return Settle();
 
