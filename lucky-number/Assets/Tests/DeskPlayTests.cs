@@ -45,6 +45,29 @@ namespace NoWinners.Tests
             PlayerPrefs.SetInt("tutorialDone", 1); // The coach limits clicks and pauses the clock: tests that aren't about it switch it off.
         }
 
+        [Test]
+        public void Footnote_splits_title_body_and_action()
+        {
+            var n = Game.SplitNote("SHREDDER: wipe one square to 0. One job a week.", false);
+            Assert.AreEqual("SHREDDER", n.Title); Assert.AreEqual("Wipe one square to 0. One job a week.", n.Body); Assert.IsNull(n.Action);
+            n = Game.SplitNote("×2: change the number. Click to play it.", false);
+            Assert.AreEqual("×2", n.Title); Assert.AreEqual("Change the number.", n.Body); Assert.AreEqual("to play it.", n.Action);
+            n = Game.SplitNote("CALENDAR: click to read it up close.", false);
+            Assert.AreEqual("", n.Body); Assert.AreEqual("to read it up close.", n.Action);
+            n = Game.SplitNote("WEEK 4 (this week): INSPECTION DAY.", false);
+            Assert.AreEqual("WEEK 4 (THIS WEEK)", n.Title);
+            n = Game.SplitNote("+5: change the number. Cards work on air only: pull the lever first.", true);
+            Assert.AreEqual("Change the number.", n.Body); Assert.AreEqual("Cards work on air only: pull the lever first.", n.Action);
+            n = Game.SplitNote("Announce 07. Inside 20 seconds pays +20.", false);
+            Assert.IsNull(n.Title); Assert.IsNull(n.Action);
+            n = Game.SplitNote("Cards work on air only: pull the lever first.", true);
+            Assert.IsNull(n.Title, "a sentence with a colon is not a title"); Assert.IsNull(n.Action);
+            n = Game.SplitNote($"×2: {Game.Explain(new Card('*', 2))}. Click to play it.", false);
+            Assert.AreEqual("×2", n.Title); Assert.AreEqual("Multiplies the number by 2.", n.Body); Assert.AreEqual("to play it.", n.Action);
+            n = Game.SplitNote($"TAKE: {Game.ExplainSlip(Slip.Bulk)} Click to pin it to the monitor.", false);
+            Assert.AreEqual("TAKE", n.Title); Assert.AreEqual("to pin it to the monitor.", n.Action);
+        }
+
         [UnityTest]
         public IEnumerator The_tutorial_row_turns_the_coach_off_and_on()
         {
@@ -99,11 +122,11 @@ namespace NoWinners.Tests
             yield return Settle(Game.LockSeconds + .2f);
             Assert.IsTrue(game.Drawn);
             Shot(cam, "1-on-air");
-            StringAssert.StartsWith("Each square is a number", game.Tutorial, "the tutorial starts on a first run");
+            StringAssert.StartsWith("Each square shows how many people", game.Tutorial, "the tutorial starts on a first run");
             Assert.IsFalse(game.CanLook("machine"), "the coach keeps the camera on the step");
             Assert.IsFalse(game.CanLean);
             game.TutorialSkip(); // TAB: the one info step (board and bar).
-            StringAssert.StartsWith("The number is out", game.Tutorial);
+            StringAssert.StartsWith("A ball just rolled", game.Tutorial);
 
             // On air: seeded first roll, so one card reaches a free square.
             int playable = Enumerable.Range(0, game.S.Hand.Count).First(game.CanPlay);
@@ -122,7 +145,7 @@ namespace NoWinners.Tests
             Assert.AreEqual(to, game.Value);
             yield return null;
             Shot(cam, "3-card-played");
-            StringAssert.StartsWith("Happy with it", game.Tutorial);
+            StringAssert.StartsWith("Press the red button", game.Tutorial);
             game.Click(At(game.Room.GoButton));
             Assert.AreEqual(Tier.Clean, game.Result.Air.Tier);
             Assert.AreEqual(1, game.S.Streak);
@@ -146,7 +169,7 @@ namespace NoWinners.Tests
             game.Click(Vector2.zero);
             Assert.AreEqual((2, false), (game.S.Week, game.Live), "after the show comes the prep for next week");
             yield return null;
-            StringAssert.StartsWith("Before the next show", game.Tutorial);
+            StringAssert.StartsWith("You are off air now", game.Tutorial);
             Assert.IsTrue(game.CanLook("machine"));
             Assert.IsTrue(game.NavOn(1), "the > button is up for mouse-only play");
 
@@ -159,14 +182,14 @@ namespace NoWinners.Tests
             game.Look("machine"); // The desk actions are on the side table.
             yield return Settle();
             Shot(cam, "1b-side-table");
-            StringAssert.StartsWith("You can use one of these", game.Tutorial);
+            StringAssert.StartsWith("Pick one desk tool", game.Tutorial);
             CollectionAssert.Contains(game.TutorialTargets().ToList(), game.Room.ActionProps[DeskAction.Bribe], "the tutorial brackets the props it's about");
             File.WriteAllBytes("Logs/Shots/1b-tutorial-hud.png", game.Screens.Hud.Tex.EncodeToPNG());
             game.Click(At(game.Room.ActionProps[DeskAction.Bribe]));
             Assert.AreEqual(cash + Config.Bribe, game.S.Cash);
             Assert.AreEqual(DeskAction.Bribe, game.S.Acted);
             yield return null;
-            StringAssert.StartsWith("These are special cards", game.Tutorial);
+            StringAssert.StartsWith("The rack holds special cards", game.Tutorial);
             Assert.IsTrue(game.ClickBlocked(game.Room.ActionProps[DeskAction.Shred]), "the coach only lets you touch what it teaches");
             Assert.IsTrue(game.ClickBlocked(game.Room.LiveSwitch), "the special-cards step points at the rack, not the lever");
             Assert.IsTrue(game.CanSkip, "a step can be skipped inside the same phase");

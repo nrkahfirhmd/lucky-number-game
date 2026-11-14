@@ -95,8 +95,8 @@ namespace NoWinners
         {
             "YEAR 2000.",
             "EVERYONE IS GAMBLING ON THE LOTTERY.",
-            "THEY BUY A NUMBER, HOPING IT WILL CHANGE THEIR LIFE.",
-            "LITTLE DID THEY KNOW, I WAS THE ONE WHO ORCHESTRATED THEIR FATE.",
+            "THEY BUY A NUMBER, HOPING IT WILL CHANGE THEIR LIVES.",
+            "LITTLE DO THEY KNOW, I AM THE ONE WHO ORCHESTRATES THEIR FATE.",
         };
         public bool IntroUp { get; private set; }
         float introAt;
@@ -279,25 +279,40 @@ namespace NoWinners
         {
             var d = S.Dates[w];
             string when = w < S.Week ? " (done)" : w == S.Week ? " (this week)" : "";
-            string what = Run.IsInspection(w) ? $"INSPECTION DAY. You may play at most {Config.InspectionCards} card on air."
-                : d == Special.Payday ? "PAYDAY. Tickets x2, so cash x2."
-                : d == Special.Telethon ? $"TELETHON. Prize x2, and +{Config.Live * Config.TelethonLive} if you announce on time."
-                : d == Special.Nephew ? $"MINISTER'S NEPHEW. Land on one of his {Config.NephewNumbers} numbers for +{Config.NephewReward}. "
-                    + (S.Nephews.Count > 0 ? $"He has {Numbers(S.Nephews)}." : "The minister phones his numbers the week before.")
-                : "An ordinary week.";
+            string what = Run.IsInspection(w) ? $"INSPECTION DAY. An inspector is in the studio, so you can play at most {Config.InspectionCards} card on air."
+                : d == Special.Payday ? "PAYDAY. Twice as many people buy tickets, doubling your ticket cash."
+                : d == Special.Telethon ? $"TELETHON. Winner payouts are doubled, and announcing within {Config.Target:0}s pays +{Config.Live * Config.TelethonLive} cash."
+                : d == Special.Nephew ? $"MINISTER'S NEPHEW. Land on one of his {Config.NephewNumbers} chosen numbers for +{Config.NephewReward} cash and a special card. "
+                    + (S.Nephews.Count > 0 ? $"His numbers are {Numbers(S.Nephews)}." : "The minister phones in his numbers the week before.")
+                : "Regular broadcast week with no special rules.";
             return $"WEEK {w}{when}: {what}";
         }
 
-        // What a special card does, for hover text.
+        // What a card does, for hover text.
         public static string Explain(Card c) => c.Op switch
         {
-            'S' => "swap the two digits. 52 = 25",
-            'M' => "99 minus the number: jump to the opposite side",
-            'T' => "shift column by tens digit +-10/+-20",
-            'W' => "copy the tens digit to the units: 47 becomes 44",
-            'R' => $"add {c.X}, wrapping past 99 to 00, 99 + 3 = 02",
-            'J' => "redraw the units ball at random",
-            'D' => "the machine draws a whole new number",
+            '+' => $"Adds {c.X} to the number",
+            '-' => $"Subtracts {c.X} from the number",
+            '*' => $"Multiplies the number by {c.X}",
+            '/' => $"Divides the number by {c.X} if exact",
+            'S' => "Swaps the two digits (52 becomes 25)",
+            'M' => "Flips to 99 minus the number (12 becomes 87)",
+            'T' => $"Shifts the tens digit by {c.Arg}",
+            'W' => "Copies tens digit to ones (47 becomes 44)",
+            'R' => $"Adds {c.X}, wrapping past 99 to 00 (99 + {c.X} = {(99 + c.X) % 100:00})",
+            'J' => "Redraws the ones digit at random",
+            'D' => "Draws a whole new number (00 to 99)",
+            _ => ""
+        };
+
+        public static string ExplainSlip(Slip s) => s switch
+        {
+            Slip.Sponsor => $"End on a number ending in 7 for +{Slips.Reward(s)} cash (miss: -{Slips.Fine(s)} cash).",
+            Slip.Quiet => $"Play at most 1 card for +{Slips.Reward(s)} cash (miss: prize +{Config.Rollover}).",
+            Slip.Rush => $"Announce within {Config.RushSeconds}s for +{Slips.Reward(s)} cash (miss: prize +{Config.Rollover}).",
+            Slip.Favour => $"Let 1 to {Config.SmallMax} holders win for +{Slips.Reward(s)} cash (miss: -{Slips.Fine(s)} cash if 0 win).",
+            Slip.Bulk => $"Get +{Slips.Reward(s)} cash now, adding {Config.BulkTickets} tickets across {Config.BulkFrom} to {Config.BulkFrom + 9}.",
+            Slip.Collector => $"Get a clean draw (0 winners) for 1 special card (miss: prize +{Config.Rollover}).",
             _ => ""
         };
 
@@ -665,54 +680,53 @@ namespace NoWinners
             }
             if (preview != Preview || row != PreviewRow) { Preview = preview; PreviewRow = row; lastDraw = -100; screens.MarkDirty(); }
             if (week > 0) { hover = WeekInfo(week); return; }
-            if (c == Room.CalendarPaper && Station != "calendar" && !Shredding) { hover = "CALENDAR: click to read it up close."; return; }
+            if (c == Room.CalendarPaper && Station != "calendar" && !Shredding) { hover = "CALENDAR: Check upcoming special weeks and inspections. Click to read up close."; return; }
             if (over >= 0 && over < S.Hand.Count && !Live && (Dealing || Supplying || Punching >= 0))
             {
-                hover = Punching >= 0 && S.Hand[over].IsSpecial ? $"{S.Hand[over]} is already a special card. Pick an arithmetic card to replace."
-                    : $"Replace {S.Hand[over]} with {IncomingCard}" + (Supplying ? $" for {Config.SupplierCost} cash" : "") + (confirm == over ? ". Click again to confirm." : ". Click to pick it, then click again to confirm.");
+                hover = Punching >= 0 && S.Hand[over].IsSpecial ? $"{S.Hand[over]}: Already a special card. Pick a number card to replace."
+                    : $"REPLACE {S.Hand[over]}: Swap with {IncomingCard}" + (Supplying ? $" for {Config.SupplierCost} cash" : "") + (confirm == over ? ". Click again to confirm." : ". Click to select.");
                 return;
             }
             if (over >= 0 && over < S.Hand.Count)
             {
                 var k = S.Hand[over];
-                hover = (k.IsSpecial ? $"{k}: {Explain(k)}." : $"{k}: change the number.") + (CanPlay(over) ? " Click to play it." : " " + WhyNot());
+                hover = $"{k}: {Explain(k)}. " + (CanPlay(over) ? "Click to play it." : WhyNot());
                 return;
             }
             if (rack >= 0 && rack < S.Rack.Count)
             {
-                hover = $"RACK: {S.Rack[rack]}, {Explain(S.Rack[rack])}. " + (Live ? "Off air only." : "Click to swap into hand. Expires tonight if unused.");
+                hover = $"RACK ({S.Rack[rack]}): {Explain(S.Rack[rack])}" + (Live ? ". Off air only." : ". Expires tonight if unused. Click to swap into your hand.");
                 return;
             }
             if (c != null && c.transform == Room.Slip)
             {
                 var slip = S.Pinned != Slip.None ? S.Pinned : S.Offer;
                 int button = Station == "slip" && S.Offer != Slip.None && !Live ? SlipButton(point) : 0;
-                hover = button == 1 ? $"TAKE: pin it to the monitor. {Slips.Wants(slip)} pays {Slips.Pays(slip)}; miss it and {Slips.Fails(slip)}."
-                    : button == 2 ? "TEAR: throw it away. Free."
-                    : Station == "slip" ? $"{Slips.Name(slip)}: {Slips.Quote(slip)} Wants {Slips.Wants(slip)}, pays {Slips.Pays(slip)}. Miss: {Slips.Fails(slip)}."
-                    : $"SLIP: {Slips.Name(slip)}. Click to read it up close.";
+                hover = button == 1 ? $"TAKE: {ExplainSlip(slip)} Click to pin it to the monitor."
+                    : button == 2 ? "TEAR: Reject this side job for free. Click to tear it up."
+                    : Station == "slip" ? $"{Slips.Name(slip)}: \"{Slips.Quote(slip)}\" {ExplainSlip(slip)}"
+                    : $"SLIP ({Slips.Name(slip)}): {ExplainSlip(slip)} Click to read up close.";
                 return;
             }
-            if (c == Room.GoButton) { hover = Drawn ? $"Announce {Value:00}. Inside {Config.Target:0} seconds pays +{Config.Live}." : Live ? "Wait for the machine to draw first." : "Pull the lever to go live first."; return; }
-            if (c == Room.UndoButton) { hover = Played.Count > 0 ? "Undo the last card you played and take the number back." : "No card to undo."; return; }
-            if (c == Room.CalendarPaper && Shredding) { hover = "Finish shredding first. ESC cancels."; return; }
+            if (c == Room.GoButton) { hover = Drawn ? $"RED BUTTON: Announce {Value:00} (+{Config.Live} cash within {Config.Target:0}s). Click to announce." : Live ? "RED BUTTON: Announces your number on air. Wait for the machine to draw." : "RED BUTTON: Announces your number on air. Pull the GO LIVE lever first."; return; }
+            if (c == Room.UndoButton) { hover = Played.Count > 0 ? "UNDO: Take back the last card played. Click to undo." : "UNDO: Takes back the last card played. No card played yet."; return; }
+            if (c == Room.CalendarPaper && Shredding) { hover = "CALENDAR: Check upcoming special weeks and inspections. Finish shredding first (ESC cancels)."; return; }
             if (c == null) return;
-            if (Live)
-            {
-                if (c == Room.LiveSwitch) hover = "Already on air.";
-                else if (Room.ActionProps.ContainsValue(c)) hover = "Desk actions are off air only.";
-                return;
-            }
-            if (c == Room.LiveSwitch) hover = "GO LIVE: the machine draws." + (S.Acted == null ? $" No desk action yet: you'll lie low: the prize drops {Config.LieLow} cash, never below {Config.Prize}." : "");
-            else if (c == Room.ActionProps[DeskAction.Supplier]) hover = $"PHONE (SUPPLIER): pay {Config.SupplierCost} cash for 1 extra card now. Needs more than {Config.SupplierCost} cash. One job a week.";
-            else if (c == Room.ActionProps[DeskAction.Bribe]) hover = $"ENVELOPE (BRIBE): take +{Config.Bribe} cash now. The prize you pay winners rises {Config.Rollover} for the rest of the run. One job a week.";
-            else if (c == Room.ActionProps[DeskAction.Shred]) hover = "SHREDDER: wipe one square to 0 so it is safe. Its holders rebuy on a square either side, so those get hotter. One job a week.";
+            string ToolTail(string click, bool cancel = false, bool needCash = false) => cancel ? click
+                : Live ? "Off air only."
+                : S.Acted != null ? "Already used a desk tool this week."
+                : needCash && S.Cash <= Config.SupplierCost ? $"Needs more than {Config.SupplierCost} cash."
+                : $"One tool per week. {click}";
+            if (c == Room.LiveSwitch) hover = "GO LIVE: Draw the ball and start the show" + (!Live && S.Acted == null ? $" (skip tools to lie low: prize -{Config.LieLow}, min {Config.Prize})" : "") + (Live ? ". Already on air." : ". Click to pull the lever.");
+            else if (c == Room.ActionProps[DeskAction.Supplier]) hover = $"PHONE (SUPPLIER): Pay {Config.SupplierCost} cash for 1 extra card now. " + ToolTail(Supplying ? "Click to cancel." : "Click to call the supplier.", Supplying, true);
+            else if (c == Room.ActionProps[DeskAction.Bribe]) hover = $"ENVELOPE (BRIBE): Take +{Config.Bribe} cash now, raising the prize by +{Config.Rollover} for the run. " + ToolTail("Click to take the bribe.");
+            else if (c == Room.ActionProps[DeskAction.Shred]) hover = "SHREDDER: Clear all tickets from one square (buyers move to adjacent squares). " + ToolTail(Shredding ? "Click to cancel." : "Click to aim at the board.", Shredding);
         }
 
-        string WhyNot() => !Live ? "Cards work on air only: pull the lever first."
-            : !Drawn ? "Wait for the machine to draw."
-            : Played.Count >= Run.CardLimit(S.Week) ? "Card limit reached this week."
-            : "It can't be used on this number.";
+        string WhyNot() => !Live ? "Only works on air; pull the GO LIVE lever first."
+            : !Drawn ? "Wait for the ball to finish rolling."
+            : Played.Count >= Run.CardLimit(S.Week) ? $"Inspection week: {Run.CardLimit(S.Week)} card max on air."
+            : "Cannot use on this number.";
 
         // Public so a test can click real props through the real raycast.
         public void Click(Vector2 at)
@@ -868,22 +882,22 @@ namespace NoWinners
         static IEnumerable<Collider> Props(Game g) => g.Room.ActionProps.Values;
         static readonly Step[] Steps =
         {
-            new Step { Text = $"Each square is a number. The count is how many people bet on it. Up top: your cash. Run out and you're fired. Survive {Config.Weeks} weeks.",
+            new Step { Text = $"Each square shows how many people picked that number. Keep your cash above zero for {Config.Weeks} weeks to keep your job.",
                 Phase = 1, Targets = g => new[] { g.Room.MonitorScreen }, Bar = true },
-            new Step { Text = "The number is out. Click a card to change it into one nobody bet on. SPACE for a closer look.", Phase = 1,
+            new Step { Text = "A ball just rolled. Play a card to move the number onto an empty square. Press SPACE to lean in.", Phase = 1,
                 Lean = true, Clicks = true, Done = g => g.Played.Count > 0 || g.Result != null, Targets = g => Enumerable.Range(0, g.S.Hand.Count).Where(g.CanPlay).Select(i => Box(g.Room.Cards[i])) },
-            new Step { Text = $"Happy with it? Hit the red button to announce. Do it in {Config.Target:0}s for +{Config.Live} cash. Changed your mind? UNDO.", Phase = 1,
+            new Step { Text = $"Press the red button to announce the number. Finish within {Config.Target:0}s for +{Config.Live} cash, or press UNDO to take a card back.", Phase = 1,
                 Lean = true, Clicks = true, Done = g => g.Result != null, Targets = g => new[] { g.Room.GoButton, g.Room.UndoButton } },
-            new Step { Text = "Click to see the board. Click again for next week.", Phase = 2,
+            new Step { Text = "Click through the TV broadcast and receipt to start the next week.", Phase = 2,
                 Looks = new[] { "tv", "monitor" }, Clicks = true, Done = g => g.S.Week > 1, Targets = g => Enumerable.Empty<Collider>() },
-            new Step { Text = "Before the next show, get ready. Press D or click > to turn to the side table.", Phase = 3, Looks = Side, Done = g => g.Station == "machine", Targets = Props },
-            new Step { Text = "You can use one of these each week. Hover to see what it does, then click.", Phase = 3,
+            new Step { Text = "You are off air now. Press D or click > to check the side table before the next show.", Phase = 3, Looks = Side, Done = g => g.Station == "machine", Targets = Props },
+            new Step { Text = "Pick one desk tool to use before the show. Hover over any item to see what it does, then click it.", Phase = 3,
                 Looks = Side, Clicks = true, Done = g => g.S.Acted != null, Targets = g => Props(g).Append(g.Room.LiveSwitch) },
-            new Step { Text = "These are special cards. Click one, then pick a card in your hand to swap it with.", Phase = 3,
+            new Step { Text = "The rack holds special cards. Click one, then click a card in your hand to replace it.", Phase = 3,
                 Looks = Side, Clicks = true, Done = g => g.punched > 0 || g.S.Rack.Count == 0,
                 Targets = g => (g.Punching < 0 ? g.Room.Rack.Take(g.S.Rack.Count).Select(Box)
                     : Enumerable.Range(0, g.S.Hand.Count).Where(i => !g.S.Hand[i].IsSpecial).Select(i => Box(g.Room.Cards[i]))) },
-            new Step { Text = "All set? Pull the GO LIVE lever to start the show.", Phase = 3,
+            new Step { Text = "When you are ready, pull the GO LIVE lever to start the next draw.", Phase = 3,
                 Looks = Side, Clicks = true, Done = g => g.Live, Targets = g => new[] { g.Room.LiveSwitch } },
         };
         public static int TutorialSteps => Steps.Length;
@@ -932,7 +946,44 @@ namespace NoWinners
             }
         }
 
-        static GUIStyle noteStyle;
+        // The footnote: real type on a solid plate, since the 8x8 pixel font is too small to read over the 3D desk.
+        // Each hover line is "TITLE: what it does. Click to ...", so the plate shows it as a title tab, a body, and an action row.
+        // Built-in font only: WebGL has no OS fonts, and an OS font there draws nothing.
+        static GUIStyle noteBody, noteTab, noteChip;
+        static readonly Color NotePlate = new Color32(0x0E, 0x0E, 0x12, 0xF5), NoteEdge = new Color32(0x4A, 0x4A, 0x50, 0xFF),
+            NoteInk = new Color32(0xF2, 0xF2, 0xE6, 0xFF), NoteDim = new Color32(0xB4, 0xB4, 0xBC, 0xFF), NoteDark = new Color32(0x11, 0x11, 0x11, 0xFF),
+            NoteGold = new Color32(0xFF, 0xD2, 0x3A, 0xFF), NoteRed = new Color32(0xFF, 0x3B, 0x2F, 0xFF), NoteGrey = new Color32(0x8A, 0x8A, 0x90, 0xFF);
+        string noteText; // The last note drawn, kept so it can fade out after the pointer leaves.
+        float noteIn, noteOut = -1;
+        Pointer.Kind noteKind;
+        Note split; string splitText; bool splitBlocked;
+
+        public struct Note { public string Title, Body, Action; }
+
+        // Splits a hover line for the plate. The title is an all-caps lead-in before the first ": " (brackets may hold lower case).
+        public static Note SplitNote(string text, bool blocked)
+        {
+            var n = new Note { Body = text.Trim() };
+            int colon = n.Body.IndexOf(": ", StringComparison.Ordinal);
+            if (colon > 0 && colon <= 28)
+            {
+                string lead = n.Body.Substring(0, colon), bare = System.Text.RegularExpressions.Regex.Replace(lead, @"\(.*?\)", "");
+                if (!bare.Any(char.IsLower) && !lead.Contains(". ")) { n.Title = lead.ToUpperInvariant(); n.Body = n.Body.Substring(colon + 2).Trim(); }
+            }
+            if (n.Body.Length > 0) n.Body = char.ToUpperInvariant(n.Body[0]) + n.Body.Substring(1);
+            int mid = n.Body.IndexOf(". Click ", StringComparison.Ordinal);
+            int click = n.Body.StartsWith("Click ", StringComparison.Ordinal) ? 0 : mid >= 0 ? mid + 2 : -1;
+            if (click >= 0 && !blocked) { n.Action = n.Body.Substring(click + 6); n.Body = n.Body.Substring(0, click).Trim(); }
+            else if (blocked)
+            {
+                int last = n.Body.TrimEnd('.').LastIndexOf(". ", StringComparison.Ordinal);
+                if (last > 0) { n.Action = n.Body.Substring(last + 2); n.Body = n.Body.Substring(0, last + 1); }
+            }
+            return n;
+        }
+
+        static void Fill(UnityEngine.Rect r, Color c, float a) { GUI.color = new Color(c.r, c.g, c.b, c.a * a); GUI.DrawTexture(r, Texture2D.whiteTexture); }
+        static UnityEngine.Rect Snap(float x, float y, float w, float h) => new UnityEngine.Rect(Mathf.Round(x), Mathf.Round(y), Mathf.Round(w), Mathf.Round(h));
 
         void OnGUI()
         {
@@ -940,23 +991,88 @@ namespace NoWinners
             if (IntroUp) { GUI.color = Color.black; GUI.DrawTexture(new UnityEngine.Rect(0, 0, Screen.width, Screen.height), Texture2D.whiteTexture); GUI.color = Color.white; }
             var hud = screens.Hud; var hr = HudRect; int hs = HudScale;
             GUI.DrawTexture(new UnityEngine.Rect(hr.x - hud.Ox * hs, hr.y - hud.Oy * hs, hud.W * hs, hud.H * hs), hud.Tex);
-            if (Mode != Mode.Play || Result != null || string.IsNullOrEmpty(hover)) return;
-            // The footnote is real type on a solid plate: the 8x8 pixel font is too small to read over the 3D desk.
-            noteStyle ??= new GUIStyle(GUI.skin.label)
-            {
-                wordWrap = true, richText = false, // Built-in font: WebGL has no OS fonts, and an OS font there draws nothing.
-                normal = { textColor = new Color(.95f, .95f, .9f) }
-            };
-            int s = HudScale, pad = 6 * s;
-            noteStyle.fontSize = Mathf.Max(13, 7 * s);
-            float w = Mathf.Min(500 * s, Screen.width - 16 * s), h = noteStyle.CalcHeight(new GUIContent(hover), w - 2 * pad - 3 * s) + 2 * pad; // Ends before the ESC hint at x 520.
-            var box = new UnityEngine.Rect(8 * s, Screen.height - h - 8 * s, w, h);
-            GUI.color = new Color(.07f, .07f, .07f, .94f);
-            GUI.DrawTexture(box, Texture2D.whiteTexture);
-            GUI.color = new Color(1, .82f, .23f);
-            GUI.DrawTexture(new UnityEngine.Rect(box.x, box.y, 3 * s, box.height), Texture2D.whiteTexture);
+            if (Mode != Mode.Play || Result != null) { noteText = null; return; }
+            DrawNote();
             GUI.color = Color.white;
-            GUI.Label(new UnityEngine.Rect(box.x + pad + 3 * s, box.y + pad, w - 2 * pad - 3 * s, h - 2 * pad), hover, noteStyle);
+        }
+
+        void DrawNote()
+        {
+            float now = Time.unscaledTime;
+            if (!string.IsNullOrEmpty(hover))
+            {
+                if (noteText == null) noteIn = now; // Slides in from nothing; moving between props swaps in place.
+                noteText = hover; noteOut = -1; noteKind = Pointer.Current;
+            }
+            else if (noteText != null && noteOut < 0) noteOut = now;
+            if (noteText == null) return;
+            const float inTime = .14f, outTime = .09f;
+            float a = noteOut >= 0 ? 1 - Mathf.Max(0, now - noteOut - .05f) / outTime : 1; // A short grace hides raycast jitter on prop edges.
+            if (a <= 0) { noteText = null; noteOut = -1; return; }
+            float rise = Prefs.ReduceMotion ? 1 : Mathf.Clamp01((now - noteIn) / inTime);
+            rise = 1 - (1 - rise) * (1 - rise) * (1 - rise); // Ease out.
+            if (!Prefs.ReduceMotion) a *= rise;
+
+            int s = HudScale, font = Mathf.Max(13, 7 * s), u = Mathf.Max(2, s);
+            noteBody ??= new GUIStyle(GUI.skin.label) { wordWrap = true, richText = false, padding = new RectOffset(), margin = new RectOffset() };
+            noteTab ??= new GUIStyle(noteBody) { wordWrap = false, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleLeft };
+            noteChip ??= new GUIStyle(noteTab) { alignment = TextAnchor.MiddleCenter };
+            noteBody.fontSize = font; noteTab.fontSize = font - 1; noteChip.fontSize = Mathf.Max(10, font - 3);
+
+            bool blocked = noteKind == Pointer.Kind.No;
+            if (noteText != splitText || blocked != splitBlocked) { split = SplitNote(noteText, blocked); splitText = noteText; splitBlocked = blocked; }
+            var n = split;
+            Color accent = blocked ? NoteRed : noteKind == Pointer.Kind.Hand ? NoteGold : NoteGrey;
+            string chip = n.Action == null ? null : blocked ? "NOT NOW" : "CLICK";
+
+            float pad = 5 * u, bar = 2 * u, gap = 3 * u;
+            float maxW = Mathf.Min(500 * s, Screen.width - 16 * s); // Ends before the ESC hint at HUD x 520.
+            float chipW = chip == null ? 0 : noteChip.CalcSize(new GUIContent(chip)).x + 4 * u, chipH = noteChip.fontSize + 3 * u;
+            float tabW = n.Title == null ? 0 : noteTab.CalcSize(new GUIContent(n.Title)).x + 2 * pad;
+            // Shrink-wrap to the text so a short note is a small plate, a long one wraps at maxW.
+            float want = Mathf.Max(noteBody.CalcSize(new GUIContent(n.Body)).x,
+                n.Action == null ? 0 : chipW + gap + noteBody.CalcSize(new GUIContent(n.Action)).x);
+            float w = Mathf.Clamp(want + 2 * pad + bar + 1, Mathf.Max(tabW + 8 * u, 64 * s), maxW), inner = w - 2 * pad - bar;
+            float bodyH = n.Body.Length > 0 ? noteBody.CalcHeight(new GUIContent(n.Body), inner) : 0;
+            float actH = n.Action == null ? 0 : Mathf.Max(chipH, noteBody.CalcHeight(new GUIContent(n.Action), inner - chipW - gap));
+            float rule = n.Action != null && bodyH > 0 ? 2 * gap + u / 2 : 0;
+            float h = bodyH + rule + actH + 2 * pad, tabH = n.Title == null ? 0 : noteTab.fontSize + 4 * u;
+            float x = 8 * s, y = Screen.height - h - 8 * s + (1 - rise) * 6 * s;
+
+            // Hard pixel drop shadow, plate, 1px edge, accent spine.
+            if (tabH > 0) Fill(Snap(x + u, y - tabH + u, tabW, tabH), Color.black, .45f * a);
+            Fill(Snap(x + u, y + u, w, h), Color.black, .45f * a);
+            Fill(Snap(x, y, w, h), NotePlate, a);
+            Fill(Snap(x, y, w, 1), NoteEdge, a); Fill(Snap(x, y + h - 1, w, 1), NoteEdge, a); Fill(Snap(x + w - 1, y, 1, h), NoteEdge, a);
+            Fill(Snap(x, y, bar, h), accent, a);
+
+            // Title tab: sits on the plate like a folder tab, in the tone of the cursor.
+            if (tabH > 0)
+            {
+                Fill(Snap(x, y - tabH, tabW, tabH + 1), accent, a); // +1 covers the plate's top edge, so tab and spine read as one piece.
+                GUI.color = new Color(1, 1, 1, a);
+                noteTab.normal.textColor = NoteDark;
+                GUI.Label(Snap(x + pad, y - tabH, tabW - pad, tabH), n.Title, noteTab);
+            }
+
+            float cx = x + bar + pad, cy = y + pad;
+            GUI.color = new Color(1, 1, 1, a);
+            if (bodyH > 0)
+            {
+                noteBody.normal.textColor = NoteInk;
+                GUI.Label(Snap(cx, cy, inner, bodyH), n.Body, noteBody);
+                cy += bodyH;
+            }
+            if (n.Action == null) return;
+            if (rule > 0) { Fill(Snap(cx, cy + gap, inner, 1), NoteEdge, a); cy += rule; }
+            // Action row: a key-cap chip, then what the click does (or why it can't).
+            float chipY = cy + Mathf.Max(0, (Mathf.Min(actH, font + 4 * u) - chipH) / 2);
+            Fill(Snap(cx, chipY, chipW, chipH), accent, a);
+            GUI.color = new Color(1, 1, 1, a);
+            noteChip.normal.textColor = NoteDark;
+            GUI.Label(Snap(cx, chipY, chipW, chipH), chip, noteChip);
+            noteBody.normal.textColor = blocked ? NoteRed : NoteDim;
+            GUI.Label(Snap(cx + chipW + gap, cy, inner - chipW - gap, actH), n.Action, noteBody);
         }
     }
 }

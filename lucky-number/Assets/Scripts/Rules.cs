@@ -92,7 +92,7 @@ namespace NoWinners
         {
             Slip.Sponsor => "FINAL NUMBER ENDS IN 7",
             Slip.Quiet => "PLAY AT MOST 1 CARD",
-            Slip.Rush => $"ANNOUNCE WITHIN {Config.RushSeconds} S",
+            Slip.Rush => $"ANNOUNCE UNDER {Config.RushSeconds}S",
             Slip.Favour => $"A SMALL WINNER (1-{Config.SmallMax} HOLDERS)",
             Slip.Bulk => "NOTHING: PAID NOW",
             Slip.Collector => "A CLEAN DRAW",
