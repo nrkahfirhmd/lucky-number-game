@@ -5,12 +5,13 @@ namespace NoWinners
 {
     // Plays the generated sound effects (tools/sfx, docs/no-winners-sfx-list.md) by watching the game's public state.
     // Game only calls in for what it can't show as state: a refused click.
-    // Clips are pre-mixed to "quiet off air, loud on air", so everything plays at 1 and Prefs.Volume is the master.
+    // Clips are pre-mixed to "quiet off air, loud on air", so every source plays at its own level times Prefs.Volume. Music has its own slider, Prefs.Music.
     public class Sfx : MonoBehaviour
     {
         Game game;
         readonly Dictionary<string, AudioClip> clips = new Dictionary<string, AudioClip>();
-        AudioSource desk, tv, room, machine, deadAir, standBy;
+        readonly Dictionary<AudioSource, float> level = new Dictionary<AudioSource, float>(); // Each SFX source's own level, before the slider.
+        AudioSource desk, tv, room, machine, deadAir, standBy, music;
         AudioLowPassFilter duck;
         readonly List<(float at, string name)> queue = new List<(float, string)>();
 
@@ -25,11 +26,14 @@ namespace NoWinners
         int sel;
         bool live, drawn, busy, shredding, revealed, endCard, started;
         DeskAction? acted;
-        int lost;
-        WeekResult result;
+        int lost, rack, punching = -1, confirm = -1, hand, introShown;
+        Slip offer, pinned;
+        bool leaning;
+        WeekResult result, asked;
         string station, hover;
         int preview = -1;
-        float volume, nextClock, lastFlip;
+        float volume, musicVolume, musicLevel, nextClock, lastFlip, musicAt = float.MaxValue;
+        public float SfxVolume => desk.volume;
         bool reduce, tock;
 
         void Awake()
@@ -42,10 +46,12 @@ namespace NoWinners
             {
                 var s = host.AddComponent<AudioSource>();
                 s.playOnAwake = false; s.loop = loop; s.spatialBlend = 0;
+                level[s] = 1;
                 return s;
             }
             desk = Source(false); tv = Source(false);
-            room = Source(true); machine = Source(true); deadAir = Source(true); standBy = Source(true);
+            room = Source(true); machine = Source(true); deadAir = Source(true); standBy = Source(true); music = Source(true);
+            level.Remove(music);
             duck = host.AddComponent<AudioLowPassFilter>(); // Pause muffles everything behind the menu.
             duck.cutoffFrequency = 22000;
         }
@@ -64,7 +70,7 @@ namespace NoWinners
 
         void Loop(AudioSource s, string name, float vol = 1)
         {
-            s.volume = vol;
+            level[s] = vol;
             if (s.isPlaying || !clips.TryGetValue(name, out var clip)) return;
             s.clip = clip;
             s.Play();
@@ -80,8 +86,11 @@ namespace NoWinners
         // After Game.Update, so this frame's changes are all in.
         void LateUpdate()
         {
-            AudioListener.volume = Prefs.Volume;
+            foreach (var kv in level) kv.Key.volume = kv.Value * Prefs.Volume;
             duck.cutoffFrequency = game.Mode == Mode.Paused ? 900 : 22000;
+            Music();
+            if (game.IntroUp) { Intro(); return; } // The week's sounds wait for the backstory to end.
+            introShown = 0;
             if (!started) { started = true; Begin(); return; }
 
             Menus();
@@ -99,7 +108,7 @@ namespace NoWinners
                 else Play(name);
             }
 
-            if (Time.unscaledTime >= nextClock)
+            if (Time.unscaledTime >= nextClock && game.Tutorial == null) // Silent while the guide is up: the ticking made players feel rushed.
             {
                 nextClock = Time.unscaledTime + 1;
                 Play(tock ? "room_clock_tock" : "room_clock_tick");
@@ -112,9 +121,26 @@ namespace NoWinners
             Loop(room, "room_tone");
             Play("menu_tv_power_on");
             Later(1.3f, "broadcast_theme");
+            musicAt = Time.unscaledTime + 4.5f; // Once the theme has finished.
             nextClock = Time.unscaledTime + 2;
             run = game.S; week = run.Week;
             Remember();
+        }
+
+        // One loop for the menus and the desk (tools/music). Loud on the title, a bed under the desk,
+        // nearly gone on air so the broadcast carries, out when a run ends.
+        void Music()
+        {
+            if (Time.unscaledTime < musicAt || !clips.TryGetValue("music_main", out var clip)) return;
+            if (!music.isPlaying) { music.clip = clip; musicLevel = 0; music.Play(); Heard.Add("music_main"); }
+            var m = game.Mode;
+            float want = game.S.Over != Ending.None ? 0
+                : m == Mode.Start || m == Mode.Title || (m == Mode.Settings && game.SettingsFrom == Mode.Title) ? .9f
+                : game.IntroUp ? .35f
+                : game.Live ? .25f
+                : .6f;
+            musicLevel = Mathf.MoveTowards(musicLevel, want, Time.unscaledDeltaTime * .5f);
+            music.volume = musicLevel * Prefs.Music;
         }
 
         void Menus()
@@ -130,7 +156,7 @@ namespace NoWinners
             else if (game.Sel != sel && (m != Mode.Play || game.EndCardUp)) Play("ui_menu_move");
             if (m == Mode.Settings)
             {
-                if (Prefs.Volume != volume) Play("ui_slider_tick");
+                if (Prefs.Volume != volume || Prefs.Music != musicVolume) Play("ui_slider_tick");
                 else if (Prefs.ReduceMotion != reduce) Play("ui_menu_move");
             }
         }
@@ -142,7 +168,7 @@ namespace NoWinners
             {
                 StopShow();
                 Play("desk_calendar_flip");
-                Later(.35f, "desk_tickets_print");
+                if (s.Offer == Slip.None) Later(.35f, "desk_tickets_print"); // Otherwise the slip's print covers it.
                 Later(1.9f, "desk_cash_register");
                 if (Run.IsInspection(s.Week)) Later(.9f, "desk_inspection_stamp");
             }
@@ -157,9 +183,12 @@ namespace NoWinners
             {
                 if (s.Acted == DeskAction.Supplier) { Play("desk_supplier_phone"); if (s.LostCards > lost) Later(2.2f, "desk_card_lost"); }
                 else if (s.Acted == DeskAction.Bribe) Play("desk_bribe");
-                else Play("desk_shred");
+                else if (s.Acted == DeskAction.Shred) Play("desk_shred");
+                // Lie low is silent: it happens as the lever goes, under live_switch.
             }
             else if (game.Shredding != shredding) Play(game.Shredding ? "ui_menu_confirm" : "ui_menu_back");
+
+            Prep(s);
 
             if (game.Live && !live)
             {
@@ -176,7 +205,7 @@ namespace NoWinners
                 Play($"machine_digit_flip_{flipVariant % 3 + 1}", .9f);
                 flipVariant++;
             }
-            if (game.Drawn && !drawn) { Play("machine_lock"); machine.volume = .3f; }
+            if (game.Drawn && !drawn) { Play("machine_lock"); level[machine] = .3f; }
 
             if (game.Busy && !busy) Play("rig_card_feed");
             if (game.Result == null && game.Played.Count > played) Play("rig_number_snap");
@@ -184,6 +213,8 @@ namespace NoWinners
             Clock();
 
             if (game.Result != null && result != game.Result) Announce();
+            var r = game.Result; // The TV cuts to the street, on time or on the red button.
+            if (r != null && r != asked && Time.time >= r.AskAt && game.S.Over == Ending.None && Screens.Interview(r, game.S.Week) != null) { asked = r; Play("stall_interview"); }
             if (game.Result != null && game.Result.Revealed && !revealed && game.Result.Air.Pay > 0)
             {
                 Play("result_reveal_beep");
@@ -219,6 +250,9 @@ namespace NoWinners
             else Later(.45f, a.Tier == Tier.Clean ? "result_clean" : a.Tier == Tier.Small ? "result_small" : "result_scandal");
             if (a.Bonus > 0) Later(1.3f, "result_live_bonus");
             if (s.Streak > r.StreakBefore) Later(1.7f, $"result_streak_{Mathf.Clamp(s.Streak, 1, 6)}");
+            if (a.SlipCash > 0 || a.Reward > 0) Later(2.1f, "desk_cash_register"); // A slip paid, or the minister did.
+            else if (a.Slip != Slip.None && !a.SlipMet) Later(2.1f, "desk_denied");
+            if (a.Gift != null) Later(2.6f, a.GiftLost ? "desk_card_lost" : "result_gift_card");
             if (s.Over == Ending.Lost)
             {
                 bool still = Prefs.ReduceMotion; // Screens.Collapse skips the squash with reduce motion.
@@ -227,16 +261,42 @@ namespace NoWinners
             }
         }
 
+        // Off-air prep: the slip, the rack and card swaps, and leaning in.
+        void Prep(Run s)
+        {
+            int handNow = HandSig(s);
+            if (s.Offer != Slip.None && offer == Slip.None) Later(.4f, "desk_slip_print"); // Game prints it from 0.4 s.
+            if (s.Pinned != Slip.None && pinned == Slip.None) Play("desk_slip_pin");
+            else if (s.Offer == Slip.None && offer != Slip.None && !game.Live) Play("desk_slip_tear"); // Going live bins it quietly.
+            if (game.Punching >= 0 && game.Punching != punching) Play("desk_rack_pick");
+            if (s.Rack.Count < rack && !game.Live) Play("desk_repunch");
+            else if (handNow != hand && s.Week == week && !game.Live && game.Result == null && s.Acted == acted && s.Rack.Count == rack) Play("desk_card_place");
+            if (game.ConfirmCard >= 0 && game.ConfirmCard != confirm) Play("ui_menu_move"); // First click asks.
+            if (game.Leaning != leaning) Play(game.Leaning ? "room_lean_in" : "room_lean_out");
+        }
+
+        static int HandSig(Run s) { int h = s.Hand.Count; foreach (var c in s.Hand) h = h * 31 + c.Op * 397 + c.X; return h; }
+
+        // The backstory: a swell per line, a sting on the last.
+        void Intro()
+        {
+            int n = game.IntroShown;
+            if (n > introShown) Play(n >= Game.IntroText.Length ? "intro_reveal" : "intro_line");
+            introShown = n;
+        }
+
         void Remember()
         {
             var s = game.S;
+            offer = s.Offer; pinned = s.Pinned; rack = s.Rack.Count; hand = HandSig(s);
+            punching = game.Punching; confirm = game.ConfirmCard; leaning = game.Leaning;
             mode = game.Mode; sel = game.Sel;
             week = s.Week; acted = s.Acted; lost = s.LostCards;
             live = game.Live; drawn = game.Drawn; busy = game.Busy; shredding = game.Shredding;
             played = game.Played.Count;
             result = game.Result; revealed = game.Result != null && game.Result.Revealed; endCard = game.EndCardUp;
             station = game.Station; hover = game.HoverText; preview = game.Preview;
-            volume = Prefs.Volume; reduce = Prefs.ReduceMotion;
+            volume = Prefs.Volume; musicVolume = Prefs.Music; reduce = Prefs.ReduceMotion;
         }
     }
 }

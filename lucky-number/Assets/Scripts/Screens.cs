@@ -41,7 +41,7 @@ namespace NoWinners
         WeekResult Result => game.Result;
         static bool Still => Prefs.ReduceMotion;
 
-        public Screens(Game game) { this.game = game; Hud.Tex.filterMode = FilterMode.Point; }
+        public Screens(Game game) { this.game = game; }
 
         bool monitorDirty = true, tvDirty = true, hudDirty = true;
         int lastClockLeft = int.MinValue;
@@ -127,9 +127,9 @@ namespace NoWinners
             NumberBox(g, rolling ? $"{(int)(t / 60) * 37 % 100:00}" : $"{now:00}", Ink);
             Chain(g, Tokens(cards, steps), 184, Ink, Label);
             int h = S.Board[now], cost = S.CostOf(now, cards.Count);
-            if (S.IsFavour(now)) Verdict(g, cost <= 0 ? $"NEPHEW +{-cost}" : $"NEPHEW -{cost}", cost <= 0 ? Good : Label);
+            if (S.IsFavour(now)) Verdict(g, cost <= 0 ? $"NEPHEW +{-cost} CASH" : $"NEPHEW -{cost} CASH", cost <= 0 ? Good : Label);
             else if (h == 0) Verdict(g, "0 PERSON HOLDS", Good);
-            else Verdict(g, $"{h} HOLD -{cost}", Alarm);
+            else Verdict(g, $"{h} HOLD -{cost} CASH", Alarm);
         }
 
         void MonitorResult(Canvas8 g)
@@ -236,6 +236,7 @@ namespace NoWinners
 
         static void Verdict(Canvas8 g, string text, Color32 c, int sx = 2, int sy = 2)
         {
+            if (text.Length * 8 * sx > 256) { sx = 1; sy = 1; } // Long text shrinks to fit the chip.
             g.ChipFrame(352, 224, 272, 40, c, Bg);
             g.Centred(text, 244 - 4 * sy, c, sx, sy, 488);
         }
@@ -249,13 +250,16 @@ namespace NoWinners
         void SettingsPanel(Canvas8 g)
         {
             g.Text("SETTINGS", 352, 24, Label, 2, 2);
-            // Rows every 64 px from y 44, BACK below. Game.ClickMenu hit-tests the same layout.
-            SetRow(g, 44, "VOLUME", game.Sel == 0);
-            Slider(g, 44, Prefs.Volume);
-            SetRow(g, 108, "REDUCE MOTION", game.Sel == 1);
-            Seg(g, 364, 132, 72, new[] { "OFF", "ON" }, Prefs.ReduceMotion ? 1 : 0);
-            SetRow(g, 172, "TUTORIAL", game.Sel == 2);
-            Seg(g, 364, 196, 72, new[] { "OFF", "ON" }, Prefs.Tutorial ? 1 : 0);
+            // Rows every Game.RowStep px from Game.RowY, BACK below. Game.ClickMenu hit-tests the same layout.
+            int Y(int row) => Game.RowY + row * Game.RowStep;
+            SetRow(g, Y(0), "SFX VOLUME", game.Sel == 0);
+            Slider(g, Y(0), Prefs.Volume);
+            SetRow(g, Y(1), "MUSIC VOLUME", game.Sel == 1);
+            Slider(g, Y(1), Prefs.Music);
+            SetRow(g, Y(2), "REDUCE MOTION", game.Sel == 2);
+            Seg(g, 364, Y(2) + 24, 72, new[] { "OFF", "ON" }, Prefs.ReduceMotion ? 1 : 0);
+            SetRow(g, Y(3), "TUTORIAL", game.Sel == 3);
+            Seg(g, 364, Y(3) + 24, 72, new[] { "OFF", "ON" }, Prefs.Tutorial ? 1 : 0);
             MonButton(g, 352, Game.BackY, 272, "BACK", game.Sel == Game.SettingRows);
         }
 
@@ -270,7 +274,7 @@ namespace NoWinners
 
         static void SetRow(Canvas8 g, int y, string label, bool focused)
         {
-            if (focused) g.ChipFrame(352, y, 272, 56, Label, Panel); else g.Chip(352, y, 272, 56, Panel);
+            if (focused) g.ChipFrame(352, y, 272, Game.RowStep - 4, Label, Panel); else g.Chip(352, y, 272, Game.RowStep - 4, Panel);
             g.Text(label, 364, y + 8, focused ? Ink : Dim);
         }
 
@@ -302,6 +306,11 @@ namespace NoWinners
             }
             else if (game.Live) Live(g, t);
             else OffAir(g);
+            if ((game.Live || Result != null) && S.Over == Ending.None && game.SpecialName != null)
+            {
+                g.Rect(80, 8, game.SpecialName.Length * 8 + 16, 16, Label);
+                g.Text(game.SpecialName, 88, 12, Bg);
+            }
             g.Apply();
         }
 
@@ -365,6 +374,7 @@ namespace NoWinners
 
         void ResultTv(Canvas8 g, float t)
         {
+            if (Time.time >= Result.AskAt && Interview(Result, S.Week) is { } iv) { InterviewTv(g, t, iv); return; }
             var a = Result.Air;
             string n = $"{Result.Number:00}";
             string ticker = a.Reward > 0
@@ -391,6 +401,143 @@ namespace NoWinners
                 _ => "THE STATION IS THRILLED. REALLY."
             };
             g.Centred(subtext, 228, Ink);
+        }
+
+        // Street interview, cut to after the result card every week. Who speaks follows the result: a clean rig asks someone who
+        // held the honest number you rigged away, else the nearest ticket holder; a win asks a winner; a nephew hit, the nephew.
+        public const float InterviewDelay = 2.6f;
+        public struct Vox { public string Name, Held, Quote; public int Who; public bool Happy; }
+        static readonly (string Name, Color32 Skin, Color32 Hair, Color32 Coat, int Style, bool Glasses, bool Tache)[] People =
+        {
+            ("MRS ADA, 71", H("#E8B48C"), H("#D8D8E0"), H("#5A2A9E"), 2, true, false),
+            ("DES, 54, BUS DRIVER", H("#C98A5E"), H("#3A2414"), H("#1A2AA8"), 3, false, true),
+            ("PRIYA, 29", H("#B07850"), H("#1A1018"), H("#C2187A"), 1, false, false),
+            ("MR OKAFOR, 66", H("#7A4A30"), H("#C8C8C8"), H("#3A1058"), 0, true, false),
+            ("GLENDA, 48", H("#F0C8A0"), H("#E8A040"), H("#FF8A1F"), 1, true, false),
+            ("KEV, 37", H("#E0A880"), H("#8A5A30"), H("#7A0F2E"), 3, false, false),
+            ("ROLAND, 23, NO RELATION", H("#D9A07A"), H("#8A8478"), H("#4A4E5E"), 1, false, false), // The Minister's nephew, in his uncle's grey.
+        };
+        const int Public = 6, NephewWho = 6;
+        // {0} the interviewee's number, {1} the number that aired.
+        static readonly string[] CleanQuotes =
+        {
+            "I HAD {0}. IT SAID {0} FOR A SECOND. I SWEAR IT DID.",
+            "{0} IS MY HOUSE NUMBER. AND MY AGE. AND MY BUS. WHO PICKS {1}?",
+            "I SAW {0}. I BLINKED. THEN IT WAS {1}. IS THAT ALLOWED?",
+            "FORTY YEARS ON {0}. NEXT WEEK, SURELY.",
+            "MY CAT CHOSE {0}. THE CAT IS VERY UPSET.",
+            "WHO EVEN HAS {1}? NOBODY. THAT'S THE POINT, ISN'T IT.",
+            "I'M BUYING TWO TICKETS NEXT WEEK. BOTH ON {0}. TO BE SAFE.",
+            "THE BALL WAS ROLLING STRAIGHT FOR {0}. THEN IT WASN'T.",
+        };
+        // Five clean weeks or more: the public has noticed.
+        static readonly string[] AngryQuotes =
+        {
+            "NOBODY WINS. EVER. WHO IS RUNNING THIS? I WANT A NAME.",
+            "I'VE STARTED A PETITION. IT'S ON {0}. LIKE MY TICKET.",
+            "MY WHOLE STREET HAD {0}. THE STREET IS FURIOUS.",
+            "SOMEONE IN THAT BUILDING KNOWS SOMETHING. I CAN FEEL IT.",
+            "{1} AGAIN? WHO HAS {1}? SHOW ME ONE PERSON.",
+        };
+        // Nobody held the honest number, or nothing was rigged: the nearest ticket holder, who just missed.
+        static readonly string[] NearQuotes =
+        {
+            "I HAD {0}. IT WAS {1}. SO CLOSE I COULD TASTE IT.",
+            "I ALWAYS PLAY {0}. NEXT WEEK IT'S DEFINITELY {0}.",
+            "MY HOROSCOPE SAID {0}. I'M CANCELLING THE PAPER.",
+            "I DON'T EVEN LIKE MONEY. I JUST LIKE {0}.",
+            "WHO HAS {1}? HONESTLY, WHO? I'VE NEVER MET ANYONE.",
+            "{0}. MY LUCKY NUMBER. CLEARLY NOT VERY LUCKY.",
+        };
+        static readonly string[] WinQuotes =
+        {
+            "I WON! ON {0}! I'M BUYING A SLIGHTLY BETTER KETTLE.",
+            "FORTY YEARS AND IT FINALLY HAPPENED. WHAT DO I DO WITH MY SATURDAYS NOW?",
+            "I ONLY BOUGHT IT WITH MY BUS FARE CHANGE.",
+            "I'M SPLITTING IT WITH MY SISTER. SHE DOESN'T KNOW YET.",
+            "{0}! I TOLD YOU! I TOLD ALL OF YOU!",
+        };
+        static readonly string[] ScandalQuotes =
+        {
+            "ALL OF US HAD {0}. THE WHOLE BOWLING CLUB. DRINKS ARE ON THE STATE.",
+            "THE STATION SAYS IT'S THRILLED. IT DOESN'T LOOK THRILLED.",
+            "I'M QUITTING MY JOB. LIVE ON TELLY. HELLO, GARY.",
+            "{0} IS THE PEOPLE'S NUMBER NOW.",
+            "WE WON! WE ACTUALLY WON! IS THAT ALLOWED?",
+        };
+        static readonly string[] NephewQuotes =
+        {
+            "I JUST HAD A FEELING ABOUT {0}. A FAMILY FEELING.",
+            "UNCLE? NO. I DON'T HAVE AN UNCLE. WHO'S ASKING?",
+            "I'LL PUT IT TOWARDS SOMETHING SENSIBLE. LIKE A SECOND YACHT.",
+            "WHAT ARE THE ODDS. HONESTLY. WHAT ARE THEY.",
+        };
+
+        public static Vox? Interview(WeekResult r, int week)
+        {
+            var a = r?.Air;
+            if (a == null) return null;
+            bool clean = a.Tier == Tier.Clean && a.Reward == 0;
+            int n = clean ? r.Asked : r.Number, k = week * 7 + n;
+            string Say(string[] q) => "\"" + string.Format(q[k % q.Length], $"{n:00}", $"{r.Number:00}") + "\"";
+            string On(int h, string what) => h == 1 ? $"THE ONLY {what} ON {n:00}" : $"ONE OF {h} {what}S ON {n:00}";
+            Vox Person(int who, string held, string[] q, bool happy) => new Vox { Who = who, Name = People[who].Name, Held = held, Quote = Say(q), Happy = happy };
+            if (a.Reward > 0) return Person(NephewWho, "HIS UNCLE IS THE MINISTER", NephewQuotes, true);
+            if (clean)
+                return r.Asked < 0 ? (Vox?)null : Person(k % Public, On(r.AskedHolders, "TICKET"),
+                    r.StreakBefore + 1 >= 5 ? AngryQuotes : r.Asked == r.From ? CleanQuotes : NearQuotes, false);
+            if (a.Holders <= 0) return null;
+            return Person(k % Public, On(a.Holders, "WINNER"), a.Tier == Tier.Small ? WinQuotes : ScandalQuotes, true);
+        }
+
+        // The honest number if someone held it and it was rigged away, else the nearest held square. -1 if the board is empty.
+        public static int Asked(int[] board, int from, int number)
+        {
+            if (from != number && board[from] > 0) return from;
+            for (int d = 1; d < 100; d++)
+                foreach (int s in new[] { from - d, from + d })
+                    if (s >= 0 && s < 100 && s != number && board[s] > 0) return s;
+            return -1;
+        }
+
+        static void InterviewTv(Canvas8 g, float t, Vox v)
+        {
+            Stage(g, t, "   WE ASKED THE PUBLIC   *   THE PUBLIC HAD THOUGHTS   *", header: false);
+            g.Centred("WE ASKED THE PUBLIC", 52, Label, 2, 2);
+            Face(g, 88, 88, People[v.Who], v.Happy);
+            var lines = CachedWrap(v.Quote, 44);
+            for (int i = 0; i < lines.Count && i < 5; i++) g.Text(lines[i], 216, 96 + i * 24, Ink, 1, 2);
+            g.Rect(80, 228, 480, 24, Label);
+            g.Text(v.Name, 88, 232, Bg, 1, 2);
+            g.Text(v.Held, 88, 258, Dim);
+        }
+
+        // Block-art head, 96x128. Losers frown with worried brows, winners grin.
+        static void Face(Canvas8 g, int x, int y, (string Name, Color32 Skin, Color32 Hair, Color32 Coat, int Style, bool Glasses, bool Tache) p, bool happy)
+        {
+            g.Rect(x - 8, y, 112, 128, Panel);
+            g.Rect(x + 8, y + 96, 80, 32, p.Coat);
+            g.Rect(x + 38, y + 82, 20, 14, p.Skin);
+            g.Rect(x + 24, y + 28, 48, 56, p.Skin);
+            g.Rect(x + 18, y + 48, 6, 12, p.Skin);
+            g.Rect(x + 72, y + 48, 6, 12, p.Skin);
+            switch (p.Style)
+            {
+                case 0: g.Rect(x + 20, y + 32, 6, 16, p.Hair); g.Rect(x + 70, y + 32, 6, 16, p.Hair); break; // Bald, side tufts.
+                case 1: g.Rect(x + 22, y + 20, 52, 14, p.Hair); g.Rect(x + 20, y + 30, 6, 30, p.Hair); g.Rect(x + 70, y + 30, 6, 30, p.Hair); break;
+                case 2: g.Rect(x + 22, y + 20, 52, 12, p.Hair); g.Rect(x + 38, y + 8, 20, 14, p.Hair); break; // Bun.
+                default: g.Rect(x + 26, y + 8, 44, 18, p.Coat); g.Rect(x + 16, y + 24, 64, 6, p.Coat); break; // Flat cap.
+            }
+            g.Rect(x + 34, y + 50, 6, 6, Bg);
+            g.Rect(x + 56, y + 50, 6, 6, Bg);
+            g.Rect(x + 32, y + 44, 10, 2, p.Hair);
+            g.Rect(x + 54, y + 44, 10, 2, p.Hair);
+            if (!happy) { g.Rect(x + 40, y + 42, 2, 2, p.Hair); g.Rect(x + 54, y + 42, 2, 2, p.Hair); }
+            if (p.Glasses) { g.Frame(x + 30, y + 46, 14, 14, Bg); g.Frame(x + 52, y + 46, 14, 14, Bg); g.Rect(x + 44, y + 52, 8, 2, Bg); }
+            if (p.Tache) g.Rect(x + 36, y + 64, 24, 6, p.Hair);
+            g.Rect(x + 40, y + 72, 16, 4, Curtain2);
+            g.Rect(x + 36, y + (happy ? 68 : 74), 4, 4, Curtain2);
+            g.Rect(x + 56, y + (happy ? 68 : 74), 4, 4, Curtain2);
         }
 
         static void SeasonOver(Canvas8 g, float t)
@@ -422,24 +569,56 @@ namespace NoWinners
             else if (p >= 2400) StandBy(g);
         }
 
-        public readonly Canvas8 Hud = new Canvas8(640, 360);
+        public Canvas8 Hud { get; private set; } = NewHud(0, 0);
+        static Canvas8 NewHud(int px, int py) => new Canvas8(640 + 2 * px, 360 + 2 * py) { Ox = px, Oy = py, Tex = { filterMode = FilterMode.Point } };
+
+        // The canvas covers the whole window, the same amount past each side of the centred 640x360 layout.
+        void FitHud()
+        {
+            var v = Game.HudView;
+            int px = Mathf.Max(-v.x, v.xMax - 640) + 1, py = Mathf.Max(-v.y, v.yMax - 360) + 1; // +1: the window may end mid HUD pixel.
+            if (px == Hud.Ox && py == Hud.Oy) return;
+            Object.Destroy(Hud.Tex);
+            Hud = NewHud(px, py);
+            hudDirty = true;
+        }
+        static readonly Color32 HGreen = H("#5BE37A"), HOrange = H("#FF8A3A");
         static readonly Color32 HInk = H("#F2F2E6"), HDim = H("#8A8A90"), HGold = H("#FFD23A"), HRed = H("#FF3B2F"), HPlate = H("#111111"), HLine = H("#4A4A50"),
             Clear = new Color32(0, 0, 0, 0);
 
         string lastHudHover;
         int lastHudCash = -1, lastHudWeek = -1, lastHudStreak = -1, lastHudPrize = -1;
         Mode lastHudMode = (Mode)(-1);
-        bool lastHudEndCard, lastHudReplacing;
+        bool lastHudEndCard, lastHudReplacing, lastHudBanner;
+        int lastHudConfirm = -1;
+        bool lastHudShred;
+        string lastHudCoach, lastHudStation;
+        bool lastHudLean, lastHudIntro;
+        public RectInt NextBtn; // The coach's NEXT/SKIP chip, in HUD pixels. Empty when none is up.
+        readonly List<RectInt> coachRects = new List<RectInt>();
+        int lastCoachSig;
 
         public void DrawHud()
         {
+            FitHud();
             bool bannerActive = game.Banner != null && (Time.time - game.BannerAt <= 2.2f);
             bool coachActive = game.Tutorial != null;
             bool stateChanged = hudDirty || game.HoverText != lastHudHover || (S != null && (S.Cash != lastHudCash || S.Week != lastHudWeek
                 || S.Streak != lastHudStreak || S.Prize != lastHudPrize)) || game.Mode != lastHudMode
-                || game.EndCardUp != lastHudEndCard || game.Replacing != lastHudReplacing;
+                || game.EndCardUp != lastHudEndCard || game.Replacing != lastHudReplacing
+                || bannerActive != lastHudBanner || game.ConfirmCard != lastHudConfirm || game.Shredding != lastHudShred || game.Tutorial != lastHudCoach
+                || game.Station != lastHudStation || game.Leaning != lastHudLean || game.IntroUp != lastHudIntro; // The frame a banner or coach ends must repaint, or it stays on screen.
 
-            if (!bannerActive && !coachActive && !stateChanged) return;
+            if (!bannerActive && !coachActive && !game.IntroUp && !stateChanged) return;
+            if (coachActive && !bannerActive && !game.IntroUp)
+            {
+                // The coach only changes when its targets move on screen or the brackets blink: skip identical frames.
+                CollectCoachRects();
+                int sig = (Still || (int)(Time.unscaledTime * 3) % 2 == 0 ? 1 : 0) + (game.CanSkip ? 2 : 0);
+                foreach (var r in coachRects) sig = System.HashCode.Combine(sig, r.x, r.y, r.width, r.height);
+                if (!stateChanged && sig == lastCoachSig) return;
+                lastCoachSig = sig;
+            }
 
             hudDirty = false;
             lastHudHover = game.HoverText;
@@ -447,52 +626,114 @@ namespace NoWinners
             lastHudMode = game.Mode;
             lastHudEndCard = game.EndCardUp;
             lastHudReplacing = game.Replacing;
+            lastHudBanner = bannerActive;
+            lastHudConfirm = game.ConfirmCard;
+            lastHudShred = game.Shredding;
+            lastHudCoach = game.Tutorial;
+            lastHudStation = game.Station;
+            lastHudLean = game.Leaning;
+            lastHudIntro = game.IntroUp;
 
             var g = Hud;
             g.Fill(Clear);
-            if (game.Mode == Mode.Paused) PauseScreen(g);
+            if (game.IntroUp) Intro(g);
+            else if (game.Mode == Mode.Paused) PauseScreen(g);
             else if (game.Mode == Mode.Play)
             {
+                bool coach = !game.EndCardUp && game.Tutorial != null;
+                if (coach) CoachDim(g);
                 Bar(g);
-                if (!game.EndCardUp) Coach(g);
-                if (Result == null && !string.IsNullOrEmpty(game.HoverText)) Footnote(g, game.HoverText.ToUpper());
+                if (coach) Coach(g);
+                else NextBtn = default;
+                if (!game.EndCardUp) Nav(g, coach);
                 if (Result == null) Banner(g);
                 if (Result != null && S.Over != Ending.None && game.EndCardUp) EndCard(g);
                 if (game.Replacing) ReplacePrompt(g);
+                if (game.Replacing || game.Shredding) EscHint(g);
             }
             g.Apply();
+        }
+
+        // Black screen, the premise one paragraph at a time. The newest paragraph fades in.
+        void Intro(Canvas8 g)
+        {
+            g.Fill(new Color32(0, 0, 0, 255));
+            var paras = Game.IntroText.Select(t => CachedWrap(t, 34)).ToList();
+            int total = paras.Sum(p => p.Count * 24) + (paras.Count - 1) * 16, y = (360 - total) / 2 - 8;
+            int shown = game.IntroShown;
+            for (int i = 0; i < paras.Count; i++)
+            {
+                if (i < shown)
+                {
+                    var ink = i == 0 ? HGold : i == paras.Count - 1 ? HRed : HInk;
+                    float k = i == shown - 1 ? Mathf.Clamp01(game.IntroLineAge / .8f) : 1;
+                    var c = Color32.Lerp(new Color32(0, 0, 0, 255), ink, k);
+                    for (int l = 0; l < paras[i].Count; l++) g.Centred(paras[i][l], y + l * 24, c, 2, 2);
+                }
+                y += paras[i].Count * 24 + 16;
+            }
+            if (shown >= paras.Count && (Still || (int)(Time.unscaledTime * 2) % 2 == 0)) g.Centred("CLICK TO CONTINUE", 332, HDim);
+        }
+
+        // The printer's boost, always on screen: waiting on the reader, or taken and still to be met.
+        void SlipChip(Canvas8 g, int y)
+        {
+            bool taken = S.Pinned != Slip.None;
+            var slip = taken ? S.Pinned : S.Offer;
+            if (slip == Slip.None) return;
+            string text = (taken ? $"SLIP: {Slips.Name(slip)}, {Slips.Wants(slip)}" : $"NEW SLIP AT READER: {Slips.Name(slip)}").ToUpper();
+            if (text.Length > 46) text = text.Substring(0, 46); // Stays clear of the tutorial panel.
+            int x = Game.HudView.x;
+            g.Chip(x + 16, y, text.Length * 8 + 16, 24, taken ? HInk : HGold);
+            g.Text(text, x + 24, y + 4, HPlate, 1, 2);
         }
 
         void ReplacePrompt(Canvas8 g)
         {
             g.ChipFrame(160, 32, 320, 28, HGold, HPlate);
             g.Centred($"NEW CARD: {game.IncomingCard}", 38, HGold, 1, 2);
-            Outlined(g, "REPLACE TO", 188, HInk);
+            int pick = game.ConfirmCard;
+            if (pick >= 0 && pick < S.Hand.Count)
+            {
+                g.ChipFrame(120, 64, 400, 28, HRed, HPlate);
+                g.Centred($"REPLACE {S.Hand[pick]} WITH {game.IncomingCard}? CLICK AGAIN", 70, HRed, 1, 2);
+            }
+            else Outlined(g, "CLICK THE CARD TO REPLACE", 188, HInk);
+        }
+
+        // Bottom right, clear of the footnote.
+        void EscHint(Canvas8 g)
+        {
+            var v = Game.HudView;
+            g.Chip(v.xMax - 120, v.yMax - 28, 104, 20, HLine);
+            g.Text("ESC: CANCEL", v.xMax - 112, v.yMax - 22, HInk);
         }
 
         void Bar(Canvas8 g)
         {
             bool inspection = Run.IsInspection(S.Week);
-            g.Rect(0, 0, 640, 24, HPlate);
-            g.Rect(0, 24, 640, 2, HLine);
+            var v = Game.HudView;
+            g.Rect(v.x, v.y, v.width, 24, HPlate);
+            g.Rect(v.x, v.y + 24, v.width, 2, HLine);
             var slots = new[]
             {
-                ("WEEK", $"{S.Week:00}/{Config.Weeks}", inspection ? HRed : HInk), ("CASH", S.Cash.ToString(), S.Cash < 0 ? HRed : HGold),
-                ("STREAK", $"{S.Streak:00}", HInk), ("PRIZE", S.Prize.ToString(), HGold),
+                ("WEEK", $"{S.Week:00}/{Config.Weeks}", inspection ? HRed : HInk), ("CASH", S.Cash.ToString(), S.Cash <= 0 ? HRed : HGreen),
+                ("STREAK", $"{S.Streak:00}", HInk), ("PRIZE", S.Prize.ToString(), HOrange),
             };
             for (int i = 0; i < slots.Length; i++)
             {
                 var (label, value, c) = slots[i];
-                int x = 16 + i * 160;
-                g.Text(label, x, 8, HDim);
-                g.Text(value, x + label.Length * 8 + 8, 4, c, 1, 2);
+                int x = v.x + 16 + i * (v.width / 4);
+                g.Text(label, x, v.y + 8, HDim);
+                g.Text(value, x + label.Length * 8 + 8, v.y + 4, c, 1, 2);
             }
             if (Result != null) return;
+            SlipChip(g, v.y + (inspection || S.Today != Special.None ? 60 : 32)); // Under the date chip, or on top when there is none.
             if (inspection)
             {
                 string badge = $"INSPECTION: {Config.InspectionCards} CARD ONLY";
-                g.Chip(16, 32, badge.Length * 8 + 16, 24, HRed);
-                g.Text(badge, 24, 36, HPlate, 1, 2);
+                g.Chip(v.x + 16, v.y + 32, badge.Length * 8 + 16, 24, HRed);
+                g.Text(badge, v.x + 24, v.y + 36, HPlate, 1, 2);
                 return;
             }
             string date = S.Today switch
@@ -503,8 +744,8 @@ namespace NoWinners
                 _ => null
             };
             if (date == null) return;
-            g.Chip(16, 32, date.Length * 8 + 16, 24, HGold);
-            g.Text(date, 24, 36, HPlate, 1, 2);
+            g.Chip(v.x + 16, v.y + 32, date.Length * 8 + 16, 24, HGold);
+            g.Text(date, v.x + 24, v.y + 36, HPlate, 1, 2);
         }
 
         // The headline: a band that wipes across mid-screen for a couple of seconds. Red for ON AIR.
@@ -513,49 +754,117 @@ namespace NoWinners
             float age = Time.time - game.BannerAt;
             if (game.Banner == null || age > 2.2f) return;
             float wipe = Still ? 1 : Mathf.Clamp01(age / .18f), close = Still ? 1 : Mathf.Clamp01((2.2f - age) / .25f);
-            int h = Mathf.RoundToInt(40 * close / 2) * 2, w = Mathf.RoundToInt(640 * wipe);
+            var v = Game.HudView;
+            int h = Mathf.RoundToInt(40 * close / 2) * 2, w = Mathf.RoundToInt(v.width * wipe);
             if (h < 2) return;
-            g.Rect((640 - w) / 2, 150 - h / 2 - 2, w, h + 4, HPlate);
-            g.Rect((640 - w) / 2, 150 - h / 2, w, h, game.Live ? HRed : HGold);
+            g.Rect(v.x + (v.width - w) / 2, 150 - h / 2 - 2, w, h + 4, HPlate);
+            g.Rect(v.x + (v.width - w) / 2, 150 - h / 2, w, h, game.Live ? HRed : HGold);
             if (wipe >= 1 && close >= 1) g.Centred(game.Banner, 138, HPlate, 2, 3);
         }
 
-        // The tutorial: a panel top right, and blinking brackets on what it's about. Off screen, an arrow at the edge.
+        // Mouse-only controls for the keys A and D. Only the moves allowed right now are drawn; gold marks the one the coach asks for.
+        void Nav(Canvas8 g, bool coach)
+        {
+            var gold = Still || (int)(Time.unscaledTime * 3) % 2 == 0;
+            for (int n = -1; n <= 1; n += 2)
+            {
+                if (!game.NavOn(n)) continue;
+                var o = Game.NavAt(n);
+                bool hint = coach && CoachWantsLook(n);
+                g.ChipFrame(o.x, o.y, Game.NavW, Game.NavH, hint && gold ? HGold : HLine, HPlate);
+                string label = n < 0 ? "<" : ">";
+                g.Centred(label, o.y + 8, hint ? HGold : HInk, 1, 1, o.x + Game.NavW / 2);
+            }
+        }
+
+        // The coach points off screen: a look button is the way there.
+        bool CoachWantsLook(int dir)
+        {
+            foreach (var col in game.TutorialTargets())
+                if (!OnScreen(col.bounds, out _)) return game.Cam.transform.InverseTransformPoint(col.bounds.center).x > 0 == (dir > 0);
+            return false;
+        }
+
+        // The HUD rectangle of a world box, and whether any of it is in view.
+        bool OnScreen(Bounds b, out RectInt r)
+        {
+            int x0 = int.MaxValue, y0 = int.MaxValue, x1 = int.MinValue, y1 = int.MinValue;
+            bool behind = false;
+            for (int i = 0; i < 8; i++)
+            {
+                var p = game.Cam.WorldToScreenPoint(new Vector3((i & 1) == 0 ? b.min.x : b.max.x, (i & 2) == 0 ? b.min.y : b.max.y, (i & 4) == 0 ? b.min.z : b.max.z));
+                behind |= p.z < 0;
+                var h = Game.ScreenToHud(p);
+                x0 = Mathf.Min(x0, h.x); y0 = Mathf.Min(y0, h.y); x1 = Mathf.Max(x1, h.x); y1 = Mathf.Max(y1, h.y);
+            }
+            var v = Game.HudView;
+            int top = Mathf.Max(y0 - 4, v.y + 30); // Below the bar, so brackets never sit on its numbers.
+            r = new RectInt(x0 - 4, top, x1 - x0 + 8, Mathf.Max(0, y1 + 4 - top));
+            return !(behind || x1 < v.x || x0 >= v.xMax || y1 < v.y || y0 >= v.yMax);
+        }
+
+        // Spotlight: everything is dimmed except what the step is about, so there is one place to look.
+        void CollectCoachRects()
+        {
+            coachRects.Clear();
+            foreach (var col in game.TutorialTargets()) if (OnScreen(col.bounds, out var r)) coachRects.Add(r);
+        }
+
+        void CoachDim(Canvas8 g)
+        {
+            CollectCoachRects();
+            if (coachRects.Count == 0 && !game.TutorialBar) return;
+            g.Fill(new Color32(0, 0, 0, 150));
+            foreach (var r in coachRects) g.Rect(r.x, r.y, r.width, r.height, Clear);
+        }
+
+        // The panel goes to the corner that covers the least of what the step points at (and the look buttons). Top right wins ties.
+        int coachSpot = -1;
+        Vector2Int CoachSpot(int ph)
+        {
+            var v = Game.HudView;
+            var spots = new[] { new Vector2Int(v.xMax - 240, v.y + 32), new Vector2Int(v.x + 8, v.y + 32), new Vector2Int(v.xMax - 240, v.yMax - 8 - ph), new Vector2Int(v.x + 8, v.yMax - 8 - ph) };
+            int Covered(Vector2Int p)
+            {
+                int sum = 0;
+                void Add(RectInt r, int weight)
+                {
+                    int w = Mathf.Min(p.x + 232, r.xMax) - Mathf.Max(p.x, r.x), h = Mathf.Min(p.y + ph, r.yMax) - Mathf.Max(p.y, r.y);
+                    if (w > 0 && h > 0) sum += w * h * weight;
+                }
+                foreach (var r in coachRects) Add(r, 1);
+                foreach (int n in new[] { -1, 1 }) if (game.NavOn(n)) { var o = Game.NavAt(n); Add(new RectInt(o.x, o.y, Game.NavW, Game.NavH), 100); }
+                return sum;
+            }
+            int best = 0;
+            for (int i = 1; i < spots.Length; i++) if (Covered(spots[i]) < Covered(spots[best])) best = i;
+            // Hysteresis: the camera sways with the pointer, so only move for a clear win.
+            if (coachSpot < 0 || Covered(spots[best]) < Covered(spots[coachSpot]) * 3 / 4) coachSpot = best;
+            return spots[coachSpot];
+        }
+
+        // The tutorial: a panel in the emptiest corner, and blinking brackets on what it's about.
         void Coach(Canvas8 g)
         {
-            string text = game.Tutorial;
-            if (text == null) return;
-            var cam = Camera.main;
             var c = Still || (int)(Time.unscaledTime * 3) % 2 == 0 ? HGold : HInk; // Swaps colour 1.5 times a second, never flashes off.
-            bool left = false, right = false;
-            foreach (var col in game.TutorialTargets())
-            {
-                var b = col.bounds;
-                int x0 = int.MaxValue, y0 = int.MaxValue, x1 = int.MinValue, y1 = int.MinValue;
-                bool behind = false;
-                for (int i = 0; i < 8; i++)
-                {
-                    var p = cam.WorldToScreenPoint(new Vector3((i & 1) == 0 ? b.min.x : b.max.x, (i & 2) == 0 ? b.min.y : b.max.y, (i & 4) == 0 ? b.min.z : b.max.z));
-                    behind |= p.z < 0;
-                    var h = Game.ScreenToHud(p);
-                    x0 = Mathf.Min(x0, h.x); y0 = Mathf.Min(y0, h.y); x1 = Mathf.Max(x1, h.x); y1 = Mathf.Max(y1, h.y);
-                }
-                if (behind || x1 < 0 || x0 >= 640 || y1 < 0 || y0 >= 360)
-                {
-                    if (cam.transform.InverseTransformPoint(b.center).x > 0) right = true; else left = true;
-                    continue;
-                }
-                Brackets(g, x0 - 4, y0 - 4, x1 + 4, y1 + 4, c);
-            }
-            if (left) { g.Chip(8, 168, 48, 24, c); g.Text("< A", 12, 172, HPlate, 1, 2); }
-            if (right) { g.Chip(584, 168, 48, 24, c); g.Text("D >", 588, 172, HPlate, 1, 2); }
+            foreach (var r in coachRects) Brackets(g, r.x, r.y, r.xMax, r.yMax, c);
+            if (game.TutorialBar) { var v = Game.HudView; Brackets(g, v.x + 2, v.y + 2, v.xMax - 3, v.y + 25, c); }
 
-            var lines = CachedWrap(text, 27);
-            int top = 32, ph = 32 + lines.Count * 12 + 16;
-            g.ChipFrame(400, top, 232, ph, HGold, HPlate);
-            g.Text($"TUTORIAL {game.TutorialStep + 1}/{Game.TutorialSteps}", 412, top + 10, HGold);
-            for (int i = 0; i < lines.Count; i++) g.Text(lines[i], 412, top + 28 + i * 12, HInk);
-            g.Right("TAB: SKIP", 620, top + ph - 16, HDim);
+            var lines = CachedWrap(game.Tutorial, 27);
+            int ph = 32 + lines.Count * 12 + 40;
+            var at = CoachSpot(ph);
+            int left = at.x, top = at.y;
+            g.ChipFrame(left, top, 232, ph, HGold, HPlate);
+            g.Text($"TUTORIAL {game.TutorialStep + 1}/{Game.TutorialSteps}", left + 12, top + 10, HGold);
+            for (int i = 0; i < lines.Count; i++) g.Text(lines[i], left + 12, top + 28 + i * 12, HInk);
+            NextBtn = default;
+            if (!game.CanSkip) return;
+            // Mouse users advance with the chip, keyboard users with TAB.
+            string label = game.TutorialInfo ? "NEXT (TAB)" : "SKIP (TAB)";
+            var b = new RectInt(left + 220 - Game.NextW, top + ph - 28, Game.NextW, 20);
+            g.Chip(b.x, b.y, b.width, b.height, game.TutorialInfo ? HGold : HLine);
+            g.Centred(label, b.y + 6, game.TutorialInfo ? HPlate : HInk, 1, 1, b.x + b.width / 2);
+            NextBtn = b;
         }
 
         static void Outlined(Canvas8 g, string text, int y, Color32 c)
@@ -563,13 +872,6 @@ namespace NoWinners
             foreach (var (dx, dy) in new[] { (-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (1, -1), (-1, 1), (1, 1) })
                 g.Centred(text, y + dy, HPlate, 1, 1, 320 + dx);
             g.Centred(text, y, c);
-        }
-
-        static void Footnote(Canvas8 g, string text)
-        {
-            var lines = CachedWrap(text, 76);
-            int y = 348 - (lines.Count - 1) * 12;
-            for (int i = 0; i < lines.Count; i++) Outlined(g, lines[i], y + i * 12, HInk);
         }
 
         // Corner brackets with a dark rim, so they read on any background.
@@ -666,9 +968,7 @@ namespace NoWinners
                 if (game.Replacing && i == Room.CardCount - 1)
                 {
                     card.gameObject.SetActive(true);
-                    PunchCard(Room.CardFaces[i], game.IncomingCard, true);
-                    Room.CardFaces[i].Frame(0, 0, 128, 176, HGold, 6);
-                    Room.CardFaces[i].Apply();
+                    PunchCard(Room.CardFaces[i], game.IncomingCard, true, 6);
                     continue;
                 }
                 bool show = i < n && !game.Played.Contains(i);
@@ -686,8 +986,7 @@ namespace NoWinners
                 bool show = i < S.Rack.Count;
                 Room.Rack[i].gameObject.SetActive(show);
                 if (!show) continue;
-                PunchCard(Room.RackFaces[i], S.Rack[i], !game.Live && Result == null);
-                if (game.Punching == i) { Room.RackFaces[i].Frame(0, 0, 128, 176, H("#FFD23A"), 8); Room.RackFaces[i].Apply(); }
+                PunchCard(Room.RackFaces[i], S.Rack[i], !game.Live && Result == null, game.Punching == i ? 8 : 0);
             }
         }
 
@@ -703,6 +1002,7 @@ namespace NoWinners
             else Room.Slip.rotation = Room.SlipRestTurn; // Game.Update rises it out of the reader.
             Color32 ink = H("#1C1E28"), red = H("#B3241C"), dim = H("#8A7F60");
             var c = Room.SlipPaper;
+            if (c.Unchanged(System.HashCode.Combine(slip, pinned))) return;
             c.Fill(H("#F4EFD8"));
             for (int y = 0; y < c.H; y += 12) { c.Rect(0, y, 3, 6, H("#C9C0A0")); c.Rect(c.W - 3, y, 3, 6, H("#C9C0A0")); } // Tractor-feed holes.
             string name = Slips.Name(slip);
@@ -725,7 +1025,7 @@ namespace NoWinners
         }
 
         static readonly Dictionary<string, List<string>> WrapCache = new Dictionary<string, List<string>>();
-        static List<string> CachedWrap(string text, int width)
+        public static List<string> CachedWrap(string text, int width)
         {
             if (string.IsNullOrEmpty(text)) return new List<string>();
             string key = width + ":" + text;
@@ -749,8 +1049,10 @@ namespace NoWinners
         }
 
         // Punch-card fiction, decided in GDD section 11. Specials are on blue stock, so they read at a glance.
-        static void PunchCard(Canvas8 c, Card card, bool ok)
+        // frame: a gold border this many pixels thick (the incoming or picked card), or 0.
+        static void PunchCard(Canvas8 c, Card card, bool ok, int frame = 0)
         {
+            if (c.Unchanged(System.HashCode.Combine(card.Op, card.X, ok, frame))) return;
             bool sp = card.IsSpecial;
             Color32 ink = H(ok ? "#2a2010" : "#4a4232"), hole = H(ok ? "#5a4420" : "#3a3424");
             c.Fill(H(sp ? (ok ? "#9CC3E0" : "#55687a") : ok ? "#D9C79A" : "#7a7058"));
@@ -763,11 +1065,13 @@ namespace NoWinners
             for (int x = 0; x < 7; x++)
                 for (int y = 0; y < 3; y++)
                     if ((seed + x * 3 + y * 5) % 3 != 0) c.Rect(11 + x * 16, 108 + y * 20, 8, 12, hole);
+            if (frame > 0) c.Frame(0, 0, 128, 176, frame == 8 ? H("#FFD23A") : HGold, frame);
             c.Apply();
         }
 
         static void Plate(Canvas8 c, string label, Color32 ink, int scale = 2)
         {
+            if (c.Unchanged(System.HashCode.Combine(label, ink.r, ink.g, ink.b, scale))) return;
             c.Fill(H("#111111"));
             c.Centred(label, (c.H - 8 * scale) / 2, ink, scale);
             c.Apply();
@@ -782,7 +1086,7 @@ namespace NoWinners
 
             string go = S.Over != Ending.None ? "PLAY AGAIN" : Result != null ? "NEXT WEEK" : game.Drawn ? $"RUN {game.Value:00}" : game.Live ? "DRAWING" : "GO LIVE FIRST";
             Plate(Room.GoPlate, go, game.Drawn || Result != null ? on : H("#8a8a90"));
-            Plate(Room.UndoPlate, "EJECT", on);
+            Plate(Room.UndoPlate, "UNDO", on);
         }
 
         // Calendar tiles on the 256x320 paper. Game.CalendarAt hit-tests the same layout.
@@ -794,9 +1098,20 @@ namespace NoWinners
             return row * 4 + col + 1;
         }
 
+        // A red map pin stuck in the top of the tile.
+        static void Pin(Canvas8 c, int cx, int cy)
+        {
+            c.Rect(cx - 1, cy + 4, 3, 8, H("#3A3A40"));
+            for (int dy = -6; dy <= 6; dy++)
+                for (int dx = -6; dx <= 6; dx++)
+                    if (dx * dx + dy * dy <= 36) c.Rect(cx + dx, cy + dy, 1, 1, dx * dx + dy * dy > 25 ? H("#5A0F0A") : H("#D8281C"));
+            c.Rect(cx - 3, cy - 3, 2, 2, H("#FF9A8C"));
+        }
+
         void DrawCalendar()
         {
             var c = Room.Calendar;
+            if (c.Unchanged(System.HashCode.Combine(S, S.Week, game.CalendarWeek))) return; // S: a new run reshuffles the dates.
             c.Fill(H("#E8E2CC"));
             c.Rect(0, 0, c.W, 40, H("#B3241C"));
             c.Centred("THE CALENDAR", 12, H("#F2F2E6"), 2);
@@ -805,12 +1120,13 @@ namespace NoWinners
                 int x = CalX + (w - 1) % 4 * CalStepX, y = CalY + (w - 1) / 4 * CalStepY;
                 bool insp = Run.IsInspection(w);
                 var date = S.Dates[w];
-                c.Rect(x, y, CalW, CalH, H(insp ? "#B3241C" : date != Special.None ? "#E0A82E" : "#D0C8AE"));
+                c.Rect(x, y, CalW, CalH, H(insp ? "#B3241C" : date == Special.Payday ? "#3FA05A" : date == Special.Telethon ? "#A8489E" : date == Special.Nephew ? "#2E8FB8" : "#D0C8AE"));
+                if (date != Special.None) c.Frame(x, y, CalW, CalH, H("#1C1E28"), 2);
                 c.Centred($"{w}{(insp ? "!" : "")}", y + 24, H(insp ? "#F2F2E6" : "#1C1E28"), 2, 3, x + 28);
-                if (date != Special.None) c.Centred(date == Special.Payday ? "PAY" : date == Special.Telethon ? "TELE" : "NEPH", y + 56, H("#1C1E28"), 1, 1, x + 28);
+                if (date != Special.None) c.Centred(date == Special.Payday ? "PAY" : date == Special.Telethon ? "TELE" : "NEPH", y + 56, H("#F2F2E6"), 1, 1, x + 28);
                 if (w == game.CalendarWeek) c.Frame(x, y, CalW, CalH, H("#FFD23A"), 3); // Pointed at, in the close-up.
-                if (w < S.Week) c.Rect(x + 4, y + CalH - 10, CalW - 8, 4, H("#1C1E28"));
-                if (w == S.Week) c.Frame(x + 2, y + 2, CalW - 4, CalH - 4, H("#1A2AA8"), 4);
+                if (w < S.Week) for (int j = 0; j < CalH; j++) c.Rect(x + (CalH - 1 - j) * (CalW - 3) / CalH, y + j, 3, 1, H("#1C1E28")); // Struck through with a "/".
+                if (w == S.Week) Pin(c, x + CalW / 2, y + 8);
             }
             c.Apply();
         }

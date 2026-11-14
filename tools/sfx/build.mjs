@@ -484,6 +484,84 @@ sfx('menu_tv_power_on', { group: 'Menus', prio: 'Must', target: -17, desc: 'TV p
   return office(t.out(), 0.05);
 });
 
+// ================= OFF-AIR PREP AND REWARDS =================
+
+sfx('desk_slip_print', { group: 'Desk', prio: 'Should', target: -24, desc: 'The card reader prints the week\'s slip: a short burst of printer chatter. Recorded.' }, () =>
+  office(src('printer', 0.1, 1.5, { fout: 0.2 }), 0.06));
+
+sfx('desk_slip_pin', { group: 'Desk', prio: 'Should', target: -22, desc: 'TAKE: the slip is pinned to the monitor\'s edge. Paper flick, then a pin pressed in.' }, r => {
+  const t = new Track();
+  t.add(norm(src('page', 0, 0.25, { fout: 0.06 })), 0, 0.6);
+  t.add(hit({ r, modes: [[3200, 0.006, 1], [1500, 0.01, 0.4]], noiseAmp: 0.3, noiseF: 4000 }), 0.12);
+  t.add(hit({ r, modes: [[180, 0.03, 1], [420, 0.015, 0.4]], noiseAmp: 0.2 }), 0.13, 0.5);
+  return office(toMono(t.out()), 0.05);
+});
+
+sfx('desk_slip_tear', { group: 'Desk', prio: 'Should', target: -21, desc: 'TEAR: the slip is ripped in half and balled up.' }, r => {
+  const d = 0.45, t = new Track(), shape = curve([[0, 0], [0.03, 1], [0.35, 0.8], [d, 0]]);
+  t.add(mul(resonate(dust(d, r, 900), [[2500, 0.002, 1], [4200, 0.0015, 0.6], [1200, 0.003, 0.4]]), shape));
+  t.add(mul(bp(noise(d, r), 3000, 0.8), mul(shape, 0.3)));
+  t.add(norm(src('crumple', 0.05, 0.45, { fout: 0.1 })), 0.4, 0.5);
+  return office(toMono(t.out()), 0.05);
+});
+
+sfx('desk_rack_pick', { group: 'Desk', prio: 'Should', target: -24, desc: 'A special card is lifted out of the rack.' }, r => {
+  const t = new Track();
+  t.add(mul(bp(noise(0.12, r), 2200, 0.7), curve([[0, 0], [0.02, 0.5], [0.12, 0]])));
+  t.add(hit({ r, modes: [[1400, 0.01, 1], [2900, 0.006, 0.5]], noiseAmp: 0.4, noiseF: 3000 }), 0.1, 0.8);
+  return office(toMono(t.out()), 0.05);
+});
+
+sfx('desk_repunch', { group: 'Desk', prio: 'Should', target: -20, desc: 'Re-punch: three heavy keypunch thunks, then the new card drops into the hand.' }, r => {
+  const t = new Track();
+  for (const at of [0, 0.09, 0.18]) t.add(hit({ r, modes: [[260, 0.03, 1], [900, 0.012, 0.6], [2600, 0.004, 0.4]], noiseAmp: 0.6, noiseF: 2000 }), at, r.range(0.8, 1));
+  t.add(hit({ r, modes: [[220, 0.02, 1], [1300, 0.008, 0.5]], noiseAmp: 0.8, noiseF: 2500 }), 0.32, 0.6);
+  return office(toMono(t.out()), 0.06);
+});
+
+sfx('desk_card_place', { group: 'Desk', prio: 'Should', target: -22, desc: 'A new card slides in and slaps down in the hand, replacing an old one.' }, r => {
+  const t = new Track();
+  t.add(mul(bp(noise(0.1, r), 1800, 0.7), curve([[0, 0], [0.03, 0.6], [0.1, 0]])));
+  t.add(hit({ r, modes: [[220, 0.02, 1], [1300, 0.008, 0.5]], noiseAmp: 0.8, noiseF: 2500 }), 0.08);
+  return office(toMono(t.out()), 0.05);
+});
+
+const lean = (r, dir) => {
+  const d = 0.5, t = new Track();
+  const f = curve(dir > 0 ? [[0, 250], [d, 520, 0.8]] : [[0, 520], [d, 250, 0.8]]);
+  t.add(mul(bp(noise(d, r, 'pink'), f, 0.7), curve([[0, 0], [0.2, 1, 1.5], [d, 0, 0.6]])), 0, 0.5);
+  const creak = mul(resonate(dust(0.3, r, 60), [[dir > 0 ? 520 : 430, 0.01, 1], [dir > 0 ? 1040 : 860, 0.006, 0.5]]), curve([[0, 0], [0.05, 1], [0.3, 0]]));
+  t.add(creak, 0.08, 0.4);
+  return office(toMono(t.out()), 0.05);
+};
+sfx('room_lean_in', { group: 'Room', prio: 'Should', target: -28, desc: 'Lean in to the monitor: chair creak and a soft forward move.' }, r => lean(r, 1));
+sfx('room_lean_out', { group: 'Room', prio: 'Should', target: -28, desc: 'Sit back from the monitor: lower creak and a soft move back.' }, r => lean(r, -1));
+
+sfx('result_gift_card', { group: 'Broadcast', prio: 'Should', target: -19, desc: 'A special card is won (nephew or collector): rising chime and a card flick.' }, r => {
+  const t = new Track();
+  [79, 83, 86, 91].forEach((m, k) => t.add(glock(r, mtof(m), 0.5), k * 0.07, 0.6));
+  t.add(hit({ r, modes: [[1400, 0.01, 1], [2900, 0.006, 0.5]], noiseAmp: 0.4, noiseF: 3000 }), 0.32, 0.5);
+  return reverb(t.out(), { size: 0.5, damp: 0.35, wet: 0.16, tail: 0.6 });
+});
+
+// ================= BACKSTORY =================
+
+sfx('intro_line', { group: 'Backstory', prio: 'Should', target: -24, desc: 'A line of the backstory fades in: a low, soft swell.' }, r => {
+  const t = new Track();
+  t.add(bass(mtof(36), 1.4, { bright: 0.5 }), 0, 0.7);
+  t.add(mul(osc('sine', mtof(60), 1.6), env(1.6, { a: 0.3, tau: 0.5 })), 0, 0.15);
+  t.add(mul(hp(lp(noise(1.6, r, 'pink'), 2500), 400), env(1.6, { a: 0.4, tau: 0.5 })), 0, 0.02);
+  return reverb(toMono(t.out()), { size: 0.8, damp: 0.5, wet: 0.3, tail: 1.2 });
+});
+
+sfx('intro_reveal', { group: 'Backstory', prio: 'Should', target: -18, desc: 'The last backstory line: a dark minor brass sting with timpani.' }, r => {
+  const t = new Track();
+  t.add(chord(brass, [36, 39, 43, 48], 1.4, { vel: 0.7, bright: 0.6 }), 0);
+  t.add(timpani(r, mtof(36), 1.2), 0, 0.6);
+  t.add(bass(mtof(24), 1.4), 0, 0.5);
+  return reverb(t.out(), { size: 0.85, damp: 0.45, wet: 0.3, tail: 1.5 });
+});
+
 // ================= BUILD =================
 
 const filter = process.argv[2];

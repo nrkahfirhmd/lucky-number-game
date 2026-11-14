@@ -8,6 +8,7 @@ namespace NoWinners
     public class Canvas8
     {
         public readonly int W, H;
+        public int Ox, Oy; // Where (0, 0) sits on the texture. Only the HUD uses it, to reach past its layout to the window edges.
         public readonly Texture2D Tex;
         readonly Color32[] px;
         readonly bool mips;
@@ -21,14 +22,21 @@ namespace NoWinners
 
         public void Apply() { Tex.SetPixels32(px); Tex.Apply(mips); }
 
+        // Skip a redraw when what it shows hasn't changed. Upload and CPU mipmaps are the cost, not the drawing.
+        int sig;
+        bool signed;
+        public bool Unchanged(int s) { if (signed && s == sig) return true; sig = s; signed = true; return false; }
+        public void Invalidate() => signed = false;
+
         public void Rect(int x, int y, int w, int h, Color32 c)
         {
+            x += Ox; y += Oy;
             int x1 = Math.Min(W, x + w), y1 = Math.Min(H, y + h);
             for (int b = Math.Max(0, y); b < y1; b++)
                 for (int a = Math.Max(0, x), row = (H - 1 - b) * W; a < x1; a++) px[row + a] = c;
         }
 
-        public void Fill(Color32 c) => Rect(0, 0, W, H, c);
+        public void Fill(Color32 c) => Rect(-Ox, -Oy, W, H, c);
 
         public void Frame(int x, int y, int w, int h, Color32 c, int t = 2)
         {
@@ -86,7 +94,7 @@ namespace NoWinners
 
         public void Centred(string s, int y, Color32 c, int sx = 1, int sy = 0, int cx = -1)
         {
-            if (cx < 0) cx = W / 2;
+            if (cx < 0) cx = W / 2 - Ox;
             Text(s, cx - s.Length * 4 * sx, y, c, sx, sy);
         }
 

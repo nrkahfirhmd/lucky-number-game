@@ -93,7 +93,7 @@ namespace NoWinners
             Slip.Sponsor => "FINAL NUMBER ENDS IN 7",
             Slip.Quiet => "PLAY AT MOST 1 CARD",
             Slip.Rush => $"ANNOUNCE WITHIN {Config.RushSeconds} S",
-            Slip.Favour => $"A SMALL WINNER (1-{Config.SmallMax})",
+            Slip.Favour => $"A SMALL WINNER (1-{Config.SmallMax} HOLDERS)",
             Slip.Bulk => "NOTHING: PAID NOW",
             Slip.Collector => "A CLEAN DRAW",
             _ => ""
@@ -112,8 +112,8 @@ namespace NoWinners
         public static string Pays(Slip s) => s switch
         {
             Slip.Collector => "1 SPECIAL CARD",
-            Slip.Bulk => $"+{Reward(s)} NOW",
-            _ => $"+{Reward(s)}"
+            Slip.Bulk => $"+{Reward(s)} CASH NOW",
+            _ => $"+{Reward(s)} CASH"
         };
 
         public static int Fine(Slip s) => s switch
@@ -126,9 +126,9 @@ namespace NoWinners
         public static string Fails(Slip s) => s switch
         {
             Slip.Sponsor => $"-{Fine(s)} CASH",
-            Slip.Favour => $"-{Fine(s)} IF CLEAN",
+            Slip.Favour => $"-{Fine(s)} CASH IF NOBODY WINS",
             Slip.Bulk => $"{Config.BulkTickets} EXTRA TICKETS ON {Config.BulkFrom}-{Config.BulkFrom + 9}",
-            _ => $"PRIZE +{Config.Rollover}"
+            _ => $"PRIZE +{Config.Rollover} FOR THE REST OF THE RUN"
         };
     }
 
@@ -154,7 +154,7 @@ namespace NoWinners
         readonly Random rng;
         public int Cash = Config.StartCash, Week, Streak, Best, Cleans, Smalls, Scandals, Bribes, Sold, LostCards;
         public int Calm; // Taken off the prize by lying low. Never takes it below the base.
-        public readonly List<Card> Rack = new List<Card> { new Card('S') }; // One SWAP, to teach re-punching in week 1.
+        public readonly List<Card> Rack = new List<Card> { new Card('S') }; // One SWAP, to teach re-punching in the first off air.
         public bool RedrawDealt; // REDRAW: at most one per run.
         public Slip Offer, Pinned; // The printer's slip this week, and the one you took.
         public Card? Supplied, Overflow; // The card waiting at the supplier or weekly deal when the hand is full.

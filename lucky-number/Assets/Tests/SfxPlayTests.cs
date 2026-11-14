@@ -11,6 +11,13 @@ namespace NoWinners.Tests
     {
         static void Heard(Game game, string name) => Assert.Contains(name, game.Sfx.Heard, $"expected {name}");
 
+        [SetUp]
+        public void Quiet_start()
+        {
+            Game.ShowIntro = false;
+            PlayerPrefs.SetInt("tutorialDone", 1); // The coach limits clicks and pauses the clock: tests that aren't about it switch it off.
+        }
+
         [UnityTest]
         public IEnumerator A_week_asks_for_its_sounds()
         {
@@ -28,15 +35,7 @@ namespace NoWinners.Tests
             Heard(game, "ui_menu_confirm");
             Heard(game, "desk_calendar_flip");
 
-            game.TakeAction(DeskAction.Bribe);
-            yield return null;
-            Heard(game, "desk_bribe");
-            game.TakeAction(DeskAction.Supplier); // One action a week.
-            Heard(game, "desk_denied");
-
-            game.GoLive();
-            yield return null;
-            Heard(game, "live_switch");
+            Heard(game, "live_switch"); // A run opens on air.
             Heard(game, "machine_spin_loop");
             yield return new WaitForSeconds(.4f);
             Heard(game, "machine_digit_flip_1");
@@ -51,11 +50,24 @@ namespace NoWinners.Tests
             Heard(game, "announce_static");
             var tier = game.Result.Air.Tier;
             Heard(game, tier == Tier.Clean ? "result_clean" : tier == Tier.Small ? "result_small" : "result_scandal");
+
+            // After the show: off air, preparing next week.
+            game.Go(); // Cut to the street interview.
+            yield return null;
+            Heard(game, "stall_interview");
+            game.S.Cash = 50000;
+            game.Go(); game.Go();
+            yield return null;
+            game.TakeAction(DeskAction.Bribe);
+            yield return null;
+            Heard(game, "desk_bribe");
+            game.TakeAction(DeskAction.Supplier); // One action a week.
+            Heard(game, "desk_denied");
             LogAssert.NoUnexpectedReceived();
         }
 
         [UnityTest]
-        public IEnumerator The_volume_row_sets_the_master_volume()
+        public IEnumerator The_volume_rows_set_sfx_and_music_separately()
         {
             Game.KeepLog = false;
             yield return SceneManager.LoadSceneAsync("Desk");
@@ -68,7 +80,14 @@ namespace NoWinners.Tests
             game.Click(game.MonitorToScreen(364 + 44, 44 + 36)); // A quarter along the volume slider.
             yield return null;
             Assert.AreEqual(.25f, Prefs.Volume, .03f);
-            Assert.AreEqual(Prefs.Volume, AudioListener.volume, .001f);
+            Assert.AreEqual(Prefs.Volume, game.Sfx.SfxVolume, .001f);
+            float music = Prefs.Music;
+            game.Click(game.MonitorToScreen(364 + 132, Game.RowY + Game.RowStep + 36)); // Three quarters along the music slider.
+            yield return null;
+            Assert.AreEqual(.75f, Prefs.Music, .03f);
+            Assert.AreEqual(.25f, Prefs.Volume, .03f, "the music slider leaves SFX alone");
+            Assert.AreEqual(1, game.Sel, "the music row takes focus");
+            Prefs.Music = music;
             Assert.AreEqual(0, game.Sel, "the volume row takes focus");
             Heard(game, "ui_slider_tick");
             yield return new WaitForSecondsRealtime(.2f); // The monitor redraws on a 0.1 s timer.

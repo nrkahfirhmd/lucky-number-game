@@ -636,5 +636,126 @@
     "seconds": 1.91,
     "loudness": -19.9,
     "peak": -1
+  },
+  {
+    "name": "desk_slip_print",
+    "group": "Desk",
+    "prio": "Should",
+    "desc": "The card reader prints the week's slip: a short burst of printer chatter. Recorded.",
+    "loop": false,
+    "stereo": false,
+    "seconds": 1.61,
+    "loudness": -24,
+    "peak": -13.5
+  },
+  {
+    "name": "desk_slip_pin",
+    "group": "Desk",
+    "prio": "Should",
+    "desc": "TAKE: the slip is pinned to the monitor's edge. Paper flick, then a pin pressed in.",
+    "loop": false,
+    "stereo": false,
+    "seconds": 0.39,
+    "loudness": -22,
+    "peak": -1.9
+  },
+  {
+    "name": "desk_slip_tear",
+    "group": "Desk",
+    "prio": "Should",
+    "desc": "TEAR: the slip is ripped in half and balled up.",
+    "loop": false,
+    "stereo": false,
+    "seconds": 0.85,
+    "loudness": -21,
+    "peak": -6.1
+  },
+  {
+    "name": "desk_rack_pick",
+    "group": "Desk",
+    "prio": "Should",
+    "desc": "A special card is lifted out of the rack.",
+    "loop": false,
+    "stereo": false,
+    "seconds": 0.39,
+    "loudness": -24,
+    "peak": -3
+  },
+  {
+    "name": "desk_repunch",
+    "group": "Desk",
+    "prio": "Should",
+    "desc": "Re-punch: three heavy keypunch thunks, then the new card drops into the hand.",
+    "loop": false,
+    "stereo": false,
+    "seconds": 0.61,
+    "loudness": -20,
+    "peak": -5
+  },
+  {
+    "name": "desk_card_place",
+    "group": "Desk",
+    "prio": "Should",
+    "desc": "A new card slides in and slaps down in the hand, replacing an old one.",
+    "loop": false,
+    "stereo": false,
+    "seconds": 0.41,
+    "loudness": -22,
+    "peak": -2
+  },
+  {
+    "name": "room_lean_in",
+    "group": "Room",
+    "prio": "Should",
+    "desc": "Lean in to the monitor: chair creak and a soft forward move.",
+    "loop": false,
+    "stereo": false,
+    "seconds": 0.65,
+    "loudness": -28,
+    "peak": -15.8
+  },
+  {
+    "name": "room_lean_out",
+    "group": "Room",
+    "prio": "Should",
+    "desc": "Sit back from the monitor: lower creak and a soft move back.",
+    "loop": false,
+    "stereo": false,
+    "seconds": 0.63,
+    "loudness": -28,
+    "peak": -14.6
+  },
+  {
+    "name": "result_gift_card",
+    "group": "Broadcast",
+    "prio": "Should",
+    "desc": "A special card is won (nephew or collector): rising chime and a card flick.",
+    "loop": false,
+    "stereo": false,
+    "seconds": 2.55,
+    "loudness": -19,
+    "peak": -8.8
+  },
+  {
+    "name": "intro_line",
+    "group": "Backstory",
+    "prio": "Should",
+    "desc": "A line of the backstory fades in: a low, soft swell.",
+    "loop": false,
+    "stereo": false,
+    "seconds": 2.8,
+    "loudness": -24,
+    "peak": -17.5
+  },
+  {
+    "name": "intro_reveal",
+    "group": "Backstory",
+    "prio": "Should",
+    "desc": "The last backstory line: a dark minor brass sting with timpani.",
+    "loop": false,
+    "stereo": false,
+    "seconds": 5.45,
+    "loudness": -18,
+    "peak": -9
   }
 ]

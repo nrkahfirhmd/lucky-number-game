@@ -102,7 +102,7 @@ function punchCard(label, ok) {
 }
 
 // ---- Label plates, lit row then dim row ----
-export const PLATES = ['SUPPLIER', 'BRIBE', 'SHRED', 'GO LIVE', 'ON AIR', 'EJECT', 'ROLL IT', 'NEXT WEEK', 'PLAY AGAIN', 'GO LIVE FIRST'];
+export const PLATES = ['SUPPLIER', 'BRIBE', 'SHRED', 'GO LIVE', 'ON AIR', 'UNDO', 'ROLL IT', 'NEXT WEEK', 'PLAY AGAIN', 'GO LIVE FIRST'];
 export const PLATE_W = 192, PLATE_H = 32;
 function plates() {
   const g = new Img(PLATE_W, PLATE_H * PLATES.length * 2);

@@ -120,8 +120,27 @@ Written 2026-11-07 from the [GDD](GDD.md), the [art direction](no-winners-art-di
 | Newspaper thump landing on the desk | Could |
 | Teletext page chirp for the 40-year player page | Could |
 
+## Off-air prep, rewards and backstory (added 2026-11-10)
+
+| SFX | When it plays | Priority |
+|---|---|---|
+| `desk_slip_print`: short printer chatter | The reader prints the week's slip (replaces the ticket print that week) | Should |
+| `desk_slip_pin`: paper flick, pin pressed in | TAKE the slip | Should |
+| `desk_slip_tear`: rip and crumple | TEAR the slip (silent when going live bins it) | Should |
+| `desk_rack_pick`: card lifted | Pick a special in the rack | Should |
+| `desk_repunch`: three keypunch thunks | A re-punch lands in the hand | Should |
+| `desk_card_place`: slide and slap | A dealt card replaces a hand card; `ui_menu_move` on the first (asking) click | Should |
+| `room_lean_in` / `room_lean_out`: chair creak | SPACE or a monitor click | Should |
+| `desk_cash_register` (reused) / `desk_denied` (reused) | Slip or nephew pays / slip failed, after the result | Should |
+| `result_gift_card`: rising chime; `desk_card_lost` (reused) if the rack is full | A special card is won | Should |
+| `stall_interview` (reused): question, uncertain answer, murmur | The TV cuts to the street interview: 2.6 s after the result, or on the first red-button press | Should |
+| `intro_line`: low swell; `intro_reveal`: dark brass sting | Each backstory line; the last line | Should |
+
+## Music (added 2026-11-10)
+
+One loop, `music_main.wav`, for the title and the desk. Written as MIDI by `tools/music/build.mjs`, rendered in a DAW (`tools/music/don't_let_anybody_win_music.wav`), then cut to exactly 56 bars at 112 BPM (120 s) with the reverb tail folded onto the start so it loops cleanly, then made fuller: +3 dB at 80 Hz, +2 dB at 8 kHz, 1.25x stereo width, 2.5:1 glue compression, limited to -1 dB (about -12 LUFS). Imported as streaming. `Sfx.Music()` starts it after the opening theme: 0.9 on the title, 0.6 at the desk, 0.35 under the backstory, 0.25 on air, fading out when a run ends. Settings has separate SFX VOLUME (`Prefs.Volume`) and MUSIC VOLUME (`Prefs.Music`) sliders.
+
 ## Notes
 
 - About 30 Must sounds. Many share a source: one set of blips covers hover, menus, number snaps and the timer.
-- Settings has no volume control yet. Add at least Master, SFX and Music before the audio work starts.
 - Reduce-motion doesn't affect audio. Consider making the static burst quieter when it's on.

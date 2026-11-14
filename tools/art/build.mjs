@@ -17,6 +17,8 @@ const COLORS = {
   seal: '#a02820', steel: '#8a8a90', steelDark: '#5c5c62', black: '#0a0a0e', nearBlack: '#16161a', mug: '#d8d0b8', coffee: '#2a1a10',
   yellow: '#ffe14a', knob: '#3a3a38', door: '#4a3a2a', doorDark: '#3a2c1e', frame: '#8f8a78', frameDark: '#6f6a5a', tape: '#d8c89a',
   glowWarm: '#ffd9a0', glowTube: '#f2f2e6', ledRed: '#ff3b2f', ledDim: '#3a1a10', ledGreen: '#38f070', cord: '#1e1e22', white: '#f2f2e6', dome: '#cfe8ff',
+  // Appended so existing palette UVs stay put. 64 slots before the grid grows.
+  skin: '#d9a07a', skinShade: '#b87e5c', suit: '#4a4e5e', suitDark: '#363948', hair: '#8a8478',
 };
 const names = Object.keys(COLORS), SIZE = Math.ceil(Math.sqrt(names.length)), CELL = 8;
 const swatch = (c) => {
@@ -440,10 +442,66 @@ make('desk_plates', (m) => {
     m.at([x, 0.04, z], { rotX: -0.5 }, () => m.plane(0, 0, 0.001, w, h, 'plates', { uv: row(PLATES.indexOf(label)) }));
   });
   // Desk actions are explained on the staff notice, so only the controls keep a label.
-  // Two matching clusters: cards on the left (reader, eject), the show on the right (switch, red button).
+  // Two matching clusters: cards on the left (reader, undo), the show on the right (switch, red button).
   place('GO LIVE', 0.56, 0.005, 0.15, 0.025);
-  place('EJECT', -0.52, 0.2, 0.12, 0.02);
+  place('UNDO', -0.52, 0.2, 0.12, 0.02);
   place('ROLL IT', 0.52, 0.3, 0.17, 0.032);
+});
+
+// ---- Characters ----
+// The Minister: grey suit, comb-over, bribe envelope in hand. Feet at y 0, facing +Z, about 1.75 m.
+make('minister', (m) => {
+  m.part('legs', () => {
+    [-1, 1].forEach((s) => {
+      m.box(s * 0.1, 0, 0.035, 0.12, 0.07, 0.27, 'nearBlack');
+      m.taper(s * 0.1, 0.07, 0, 0.13, 0.15, 0.78, 0.15, 0.17, 'suitDark');
+    });
+  });
+  m.part('body', () => {
+    m.box(0, 0.82, 0, 0.4, 0.14, 0.23, 'suit');
+    m.taper(0, 0.92, 0, 0.42, 0.25, 0.5, 0.46, 0.25, 'suit');
+    m.taper(0, 0.9, 0.09, 0.36, 0.12, 0.3, 0.34, 0.08, 'suit'); // Ministerial paunch.
+    m.box(0, 1.37, 0, 0.54, 0.08, 0.26, 'suit');
+    // Shirt, tie, lapels and the party pin.
+    m.flat([[-0.07, 1.42, 0.127], [0.07, 1.42, 0.127], [0, 1.16, 0.127]], 'paper', [0, 0, 1]);
+    m.flat([[-0.022, 1.4, 0.13], [0.022, 1.4, 0.13], [0.03, 1.2, 0.17], [-0.03, 1.2, 0.17]], 'seal', [0, 0.2, 1]);
+    m.flat([[-0.03, 1.2, 0.17], [0.03, 1.2, 0.17], [0, 1.15, 0.168]], 'seal', [0, 0, 1]);
+    [-1, 1].forEach((s) => m.flat([[s * 0.07, 1.42, 0.128], [s * 0.13, 1.42, 0.128], [s * 0.04, 1.14, 0.17], [s * 0.005, 1.17, 0.168]], 'suitDark', [0, 0, 1]));
+    m.box(0.12, 1.33, 0.13, 0.02, 0.02, 0.008, 'brass');
+    m.cyl(0, 1.41, 0, 0.055, 0.055, 0.07, 8, 'skin');
+  });
+  m.part('arms', () => {
+    // Left arm hangs, right forearm forward holding the envelope.
+    m.taper(-0.29, 0.94, 0, 0.12, 0.13, 0.48, 0.13, 0.14, 'suit');
+    m.box(-0.29, 0.86, 0, 0.12, 0.08, 0.13, 'paper');
+    m.box(-0.29, 0.76, 0, 0.09, 0.1, 0.08, 'skin');
+    m.taper(0.29, 1.12, 0, 0.12, 0.13, 0.3, 0.13, 0.14, 'suit');
+    m.at([0.29, 1.15, 0.02], { rotX: 1.3 }, () => {
+      m.taper(0, -0.02, 0, 0.12, 0.12, 0.28, 0.12, 0.12, 'suit');
+    });
+    m.box(0.29, 1.17, 0.3, 0.09, 0.08, 0.1, 'skin');
+    m.at([0.29, 1.18, 0.37], { rotX: 0.15 }, () => {
+      m.box(0, 0, 0, 0.11, 0.18, 0.012, 'envelope');
+      m.flat([[-0.055, 0.18, 0.0065], [0.055, 0.18, 0.0065], [0, 0.11, 0.0065]], 'envelopeDark', [0, 0, 1]);
+      m.at([0, 0.11, 0.007], { rotX: Math.PI / 2 }, () => m.cyl(0, 0, 0, 0.014, 0.012, 0.004, 8, 'seal'));
+    });
+  });
+  m.part('head', () => {
+    // Jowls widen downward; the head is a box like everything else in the room.
+    m.taper(0, 1.46, 0.01, 0.25, 0.25, 0.1, 0.23, 0.24, 'skin');
+    m.box(0, 1.56, 0.01, 0.23, 0.17, 0.24, 'skin');
+    m.box(0, 1.72, 0.0, 0.235, 0.025, 0.245, 'hair'); // Comb-over.
+    m.box(0, 1.6, -0.07, 0.245, 0.12, 0.12, 'hair');
+    [-1, 1].forEach((s) => m.box(s * 0.125, 1.57, 0.0, 0.025, 0.06, 0.04, 'skinShade'));
+    m.taper(0, 1.55, 0.135, 0.05, 0.04, 0.07, 0.03, 0.03, 'skinShade');
+    [-1, 1].forEach((s) => {
+      m.box(s * 0.055, 1.62, 0.132, 0.035, 0.022, 0.006, 'black');
+      m.box(s * 0.055, 1.655, 0.132, 0.06, 0.014, 0.008, 'hair');
+      m.box(s * 0.055, 1.605, 0.136, 0.075, 0.008, 0.006, 'nearBlack'); // Half-moon reading glasses.
+    });
+    m.box(0, 1.525, 0.134, 0.11, 0.025, 0.012, 'hair');
+    m.box(0, 1.495, 0.131, 0.06, 0.008, 0.004, 'skinShade');
+  });
 });
 
 // ---- Where things go. Same positions as desk.html: right-handed, player looks along -Z ----
@@ -464,7 +522,7 @@ const layout = {
     Place('machine_base', [3.1, 0, -1.4], -Math.PI / 2),
     Place('machine_dome', [3.1, 0, -1.4], -Math.PI / 2),
     // Nothing sits in front of the monitor except the card hand and the low special-card rack, so the board is never covered.
-    // Left of the monitor: the card reader, which also prints the week's slip, with eject in front. Mug tucked behind.
+    // Left of the monitor: the card reader, which also prints the week's slip, with undo in front. Mug tucked behind.
     Place('card_reader', [-0.56, DESK_TOP, -3.0]),
     Place('card_reader_lamp', [-0.49, DESK_TOP + 0.05, -2.934]),
     Place('undo_button_base', [-0.52, DESK_TOP, -2.8]),
