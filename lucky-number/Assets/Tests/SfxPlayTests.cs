@@ -27,7 +27,7 @@ namespace NoWinners.Tests
             var game = Object.FindAnyObjectByType<Game>();
             yield return null;
             Assert.GreaterOrEqual(game.Sfx.ClipCount, 58, "all generated clips load from Resources/Audio");
-            Heard(game, "menu_tv_power_on");
+            Heard(game, "music_main"); // The title is silent apart from the music.
             Heard(game, "room_tone");
 
             game.Begin();

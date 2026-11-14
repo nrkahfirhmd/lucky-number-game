@@ -138,7 +138,7 @@ Written 2026-11-07 from the [GDD](GDD.md), the [art direction](no-winners-art-di
 
 ## Music (added 2026-11-10)
 
-One loop, `music_main.wav`, for the title and the desk. Written as MIDI by `tools/music/build.mjs`, rendered in a DAW (`tools/music/don't_let_anybody_win_music.wav`), then cut to exactly 56 bars at 112 BPM (120 s) with the reverb tail folded onto the start so it loops cleanly, then made fuller: +3 dB at 80 Hz, +2 dB at 8 kHz, 1.25x stereo width, 2.5:1 glue compression, limited to -1 dB (about -12 LUFS). Imported as streaming. `Sfx.Music()` starts it after the opening theme: 0.9 on the title, 0.6 at the desk, 0.35 under the backstory, 0.25 on air, fading out when a run ends. Settings has separate SFX VOLUME (`Prefs.Volume`) and MUSIC VOLUME (`Prefs.Music`) sliders.
+One loop, `music_main.wav`, for the title and the desk. Written as MIDI by `tools/music/build.mjs`, rendered in a DAW (`tools/music/don't_let_anybody_win_music.wav`), then cut to exactly 56 bars at 112 BPM (120 s) with the reverb tail folded onto the start so it loops cleanly, then made fuller: +3 dB at 80 Hz, +2 dB at 8 kHz, 1.25x stereo width, 2.5:1 glue compression, limited to -1 dB (about -12 LUFS). Imported as streaming. `Sfx.Music()` starts it on the first frame of the title screen, with no power-on or theme sting: 0.9 on the title, 0.6 at the desk, 0.35 under the backstory, 0.25 on air, fading out when a run ends. Settings has separate SFX VOLUME (`Prefs.Volume`) and MUSIC VOLUME (`Prefs.Music`) sliders.
 
 ## Notes
 

@@ -119,9 +119,8 @@ namespace NoWinners
         void Begin()
         {
             Loop(room, "room_tone");
-            Play("menu_tv_power_on");
-            Later(1.3f, "broadcast_theme");
-            musicAt = Time.unscaledTime + 4.5f; // Once the theme has finished.
+            musicAt = Time.unscaledTime;
+            musicLevel = .9f; // Title level from the first frame, no fade-in.
             nextClock = Time.unscaledTime + 2;
             run = game.S; week = run.Week;
             Remember();
@@ -132,7 +131,7 @@ namespace NoWinners
         void Music()
         {
             if (Time.unscaledTime < musicAt || !clips.TryGetValue("music_main", out var clip)) return;
-            if (!music.isPlaying) { music.clip = clip; musicLevel = 0; music.Play(); Heard.Add("music_main"); }
+            if (!music.isPlaying) { music.clip = clip; music.Play(); Heard.Add("music_main"); }
             var m = game.Mode;
             float want = game.S.Over != Ending.None ? 0
                 : m == Mode.Start || m == Mode.Title || (m == Mode.Settings && game.SettingsFrom == Mode.Title) ? .9f
