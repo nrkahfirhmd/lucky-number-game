@@ -944,7 +944,7 @@ namespace NoWinners
             // The footnote is real type on a solid plate: the 8x8 pixel font is too small to read over the 3D desk.
             noteStyle ??= new GUIStyle(GUI.skin.label)
             {
-                font = Font.CreateDynamicFontFromOSFont(new[] { "Helvetica Neue", "Segoe UI", "Arial" }, 16), wordWrap = true, richText = false,
+                wordWrap = true, richText = false, // Built-in font: WebGL has no OS fonts, and an OS font there draws nothing.
                 normal = { textColor = new Color(.95f, .95f, .9f) }
             };
             int s = HudScale, pad = 6 * s;
