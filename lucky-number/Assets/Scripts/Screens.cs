@@ -41,7 +41,7 @@ namespace NoWinners
         WeekResult Result => game.Result;
         static bool Still => Prefs.ReduceMotion;
 
-        public Screens(Game game) { this.game = game; Hud.Tex.filterMode = FilterMode.Point; }
+        public Screens(Game game) { this.game = game; }
 
         bool monitorDirty = true, tvDirty = true, hudDirty = true;
         int lastClockLeft = int.MinValue;
@@ -431,7 +431,19 @@ namespace NoWinners
             else if (p >= 2400) StandBy(g);
         }
 
-        public readonly Canvas8 Hud = new Canvas8(640, 360);
+        public Canvas8 Hud { get; private set; } = NewHud(0, 0);
+        static Canvas8 NewHud(int px, int py) => new Canvas8(640 + 2 * px, 360 + 2 * py) { Ox = px, Oy = py, Tex = { filterMode = FilterMode.Point } };
+
+        // The canvas covers the whole window, the same amount past each side of the centred 640x360 layout.
+        void FitHud()
+        {
+            var v = Game.HudView;
+            int px = Mathf.Max(-v.x, v.xMax - 640) + 1, py = Mathf.Max(-v.y, v.yMax - 360) + 1; // +1: the window may end mid HUD pixel.
+            if (px == Hud.Ox && py == Hud.Oy) return;
+            Object.Destroy(Hud.Tex);
+            Hud = NewHud(px, py);
+            hudDirty = true;
+        }
         static readonly Color32 HGreen = H("#5BE37A"), HOrange = H("#FF8A3A");
         static readonly Color32 HInk = H("#F2F2E6"), HDim = H("#8A8A90"), HGold = H("#FFD23A"), HRed = H("#FF3B2F"), HPlate = H("#111111"), HLine = H("#4A4A50"),
             Clear = new Color32(0, 0, 0, 0);
@@ -450,6 +462,7 @@ namespace NoWinners
 
         public void DrawHud()
         {
+            FitHud();
             bool bannerActive = game.Banner != null && (Time.time - game.BannerAt <= 2.2f);
             bool coachActive = game.Tutorial != null;
             bool stateChanged = hudDirty || game.HoverText != lastHudHover || (S != null && (S.Cash != lastHudCash || S.Week != lastHudWeek
@@ -532,8 +545,9 @@ namespace NoWinners
             if (slip == Slip.None) return;
             string text = (taken ? $"SLIP: {Slips.Name(slip)}, {Slips.Wants(slip)}" : $"NEW SLIP AT READER: {Slips.Name(slip)}").ToUpper();
             if (text.Length > 46) text = text.Substring(0, 46); // Stays clear of the tutorial panel.
-            g.Chip(16, y, text.Length * 8 + 16, 24, taken ? HInk : HGold);
-            g.Text(text, 24, y + 4, HPlate, 1, 2);
+            int x = Game.HudView.x;
+            g.Chip(x + 16, y, text.Length * 8 + 16, 24, taken ? HInk : HGold);
+            g.Text(text, x + 24, y + 4, HPlate, 1, 2);
         }
 
         void ReplacePrompt(Canvas8 g)
@@ -552,15 +566,17 @@ namespace NoWinners
         // Bottom right, clear of the footnote.
         void EscHint(Canvas8 g)
         {
-            g.Chip(520, 332, 104, 20, HLine);
-            g.Text("ESC: CANCEL", 528, 338, HInk);
+            var v = Game.HudView;
+            g.Chip(v.xMax - 120, v.yMax - 28, 104, 20, HLine);
+            g.Text("ESC: CANCEL", v.xMax - 112, v.yMax - 22, HInk);
         }
 
         void Bar(Canvas8 g)
         {
             bool inspection = Run.IsInspection(S.Week);
-            g.Rect(0, 0, 640, 24, HPlate);
-            g.Rect(0, 24, 640, 2, HLine);
+            var v = Game.HudView;
+            g.Rect(v.x, v.y, v.width, 24, HPlate);
+            g.Rect(v.x, v.y + 24, v.width, 2, HLine);
             var slots = new[]
             {
                 ("WEEK", $"{S.Week:00}/{Config.Weeks}", inspection ? HRed : HInk), ("CASH", S.Cash.ToString(), S.Cash <= 0 ? HRed : HGreen),
@@ -569,17 +585,17 @@ namespace NoWinners
             for (int i = 0; i < slots.Length; i++)
             {
                 var (label, value, c) = slots[i];
-                int x = 16 + i * 160;
-                g.Text(label, x, 8, HDim);
-                g.Text(value, x + label.Length * 8 + 8, 4, c, 1, 2);
+                int x = v.x + 16 + i * (v.width / 4);
+                g.Text(label, x, v.y + 8, HDim);
+                g.Text(value, x + label.Length * 8 + 8, v.y + 4, c, 1, 2);
             }
             if (Result != null) return;
-            SlipChip(g, inspection || S.Today != Special.None ? 60 : 32); // Under the date chip, or on top when there is none.
+            SlipChip(g, v.y + (inspection || S.Today != Special.None ? 60 : 32)); // Under the date chip, or on top when there is none.
             if (inspection)
             {
                 string badge = $"INSPECTION: {Config.InspectionCards} CARD ONLY";
-                g.Chip(16, 32, badge.Length * 8 + 16, 24, HRed);
-                g.Text(badge, 24, 36, HPlate, 1, 2);
+                g.Chip(v.x + 16, v.y + 32, badge.Length * 8 + 16, 24, HRed);
+                g.Text(badge, v.x + 24, v.y + 36, HPlate, 1, 2);
                 return;
             }
             string date = S.Today switch
@@ -590,8 +606,8 @@ namespace NoWinners
                 _ => null
             };
             if (date == null) return;
-            g.Chip(16, 32, date.Length * 8 + 16, 24, HGold);
-            g.Text(date, 24, 36, HPlate, 1, 2);
+            g.Chip(v.x + 16, v.y + 32, date.Length * 8 + 16, 24, HGold);
+            g.Text(date, v.x + 24, v.y + 36, HPlate, 1, 2);
         }
 
         // The headline: a band that wipes across mid-screen for a couple of seconds. Red for ON AIR.
@@ -600,10 +616,11 @@ namespace NoWinners
             float age = Time.time - game.BannerAt;
             if (game.Banner == null || age > 2.2f) return;
             float wipe = Still ? 1 : Mathf.Clamp01(age / .18f), close = Still ? 1 : Mathf.Clamp01((2.2f - age) / .25f);
-            int h = Mathf.RoundToInt(40 * close / 2) * 2, w = Mathf.RoundToInt(640 * wipe);
+            var v = Game.HudView;
+            int h = Mathf.RoundToInt(40 * close / 2) * 2, w = Mathf.RoundToInt(v.width * wipe);
             if (h < 2) return;
-            g.Rect((640 - w) / 2, 150 - h / 2 - 2, w, h + 4, HPlate);
-            g.Rect((640 - w) / 2, 150 - h / 2, w, h, game.Live ? HRed : HGold);
+            g.Rect(v.x + (v.width - w) / 2, 150 - h / 2 - 2, w, h + 4, HPlate);
+            g.Rect(v.x + (v.width - w) / 2, 150 - h / 2, w, h, game.Live ? HRed : HGold);
             if (wipe >= 1 && close >= 1) g.Centred(game.Banner, 138, HPlate, 2, 3);
         }
 
@@ -642,8 +659,10 @@ namespace NoWinners
                 var h = Game.ScreenToHud(p);
                 x0 = Mathf.Min(x0, h.x); y0 = Mathf.Min(y0, h.y); x1 = Mathf.Max(x1, h.x); y1 = Mathf.Max(y1, h.y);
             }
-            r = new RectInt(x0 - 4, y0 - 4, x1 - x0 + 8, y1 - y0 + 8);
-            return !(behind || x1 < 0 || x0 >= 640 || y1 < 0 || y0 >= 360);
+            var v = Game.HudView;
+            int top = Mathf.Max(y0 - 4, v.y + 30); // Below the bar, so brackets never sit on its numbers.
+            r = new RectInt(x0 - 4, top, x1 - x0 + 8, Mathf.Max(0, y1 + 4 - top));
+            return !(behind || x1 < v.x || x0 >= v.xMax || y1 < v.y || y0 >= v.yMax);
         }
 
         // Spotlight: everything is dimmed except what the step is about, so there is one place to look.
@@ -665,7 +684,8 @@ namespace NoWinners
         int coachSpot = -1;
         Vector2Int CoachSpot(int ph)
         {
-            var spots = new[] { new Vector2Int(400, 32), new Vector2Int(8, 32), new Vector2Int(400, 352 - ph), new Vector2Int(8, 352 - ph) };
+            var v = Game.HudView;
+            var spots = new[] { new Vector2Int(v.xMax - 240, v.y + 32), new Vector2Int(v.x + 8, v.y + 32), new Vector2Int(v.xMax - 240, v.yMax - 8 - ph), new Vector2Int(v.x + 8, v.yMax - 8 - ph) };
             int Covered(Vector2Int p)
             {
                 int sum = 0;
@@ -690,7 +710,7 @@ namespace NoWinners
         {
             var c = Still || (int)(Time.unscaledTime * 3) % 2 == 0 ? HGold : HInk; // Swaps colour 1.5 times a second, never flashes off.
             foreach (var r in coachRects) Brackets(g, r.x, r.y, r.xMax, r.yMax, c);
-            if (game.TutorialBar) Brackets(g, 2, 2, 637, 25, c);
+            if (game.TutorialBar) { var v = Game.HudView; Brackets(g, v.x + 2, v.y + 2, v.xMax - 3, v.y + 25, c); }
 
             var lines = CachedWrap(game.Tutorial, 27);
             int ph = 32 + lines.Count * 12 + 40;

@@ -196,6 +196,15 @@ namespace NoWinners
         // The HUD is drawn at 640x360 and scaled by whole numbers, centred in the window.
         public static int HudScale => Mathf.Max(1, Mathf.Min(Screen.width / 640, Screen.height / 360));
         public static UnityEngine.Rect HudRect { get { int s = HudScale; return new UnityEngine.Rect((Screen.width - 640 * s) / 2, (Screen.height - 360 * s) / 2, 640 * s, 360 * s); } }
+        // The window's edges in HUD pixels. Wider or taller than 16:9 they fall outside 0..640 and 0..360; the bar, coach and buttons hug them.
+        public static RectInt HudView
+        {
+            get
+            {
+                var r = HudRect; int s = HudScale, l = (int)r.x / s, t = (int)r.y / s;
+                return new RectInt(-l, -t, 640 + l + (Screen.width - (int)r.xMax) / s, 360 + t + (Screen.height - (int)r.yMax) / s);
+            }
+        }
         public static Vector2 HudToScreen(int x, int y) { var r = HudRect; return new Vector2(r.x + x * HudScale, Screen.height - r.y - y * HudScale); }
         public static Vector2Int ScreenToHud(Vector2 at) { var r = HudRect; return new Vector2Int(Mathf.FloorToInt((at.x - r.x) / HudScale), Mathf.FloorToInt((Screen.height - at.y - r.y) / HudScale)); }
 
@@ -533,7 +542,7 @@ namespace NoWinners
         // On-screen controls for mouse-only play, same actions as the keys: look left (-1), look right (1). Lean is a click on the monitor.
         // The coach narrows what is allowed, so the buttons and keys share one gate.
         public const int NavW = 24, NavH = 24, NextW = 104;
-        public static Vector2Int NavAt(int n) => n < 0 ? new Vector2Int(8, 200) : new Vector2Int(640 - 8 - NavW, 200);
+        public static Vector2Int NavAt(int n) => n < 0 ? new Vector2Int(HudView.x + 8, 200) : new Vector2Int(HudView.xMax - 8 - NavW, 200);
         public bool Leaning => lean;
 
         public bool NavOn(int n)
@@ -929,7 +938,8 @@ namespace NoWinners
         {
             if (Event.current.type != EventType.Repaint) return;
             if (IntroUp) { GUI.color = Color.black; GUI.DrawTexture(new UnityEngine.Rect(0, 0, Screen.width, Screen.height), Texture2D.whiteTexture); GUI.color = Color.white; }
-            GUI.DrawTexture(HudRect, screens.Hud.Tex);
+            var hud = screens.Hud; var hr = HudRect; int hs = HudScale;
+            GUI.DrawTexture(new UnityEngine.Rect(hr.x - hud.Ox * hs, hr.y - hud.Oy * hs, hud.W * hs, hud.H * hs), hud.Tex);
             if (Mode != Mode.Play || Result != null || string.IsNullOrEmpty(hover)) return;
             // The footnote is real type on a solid plate: the 8x8 pixel font is too small to read over the 3D desk.
             noteStyle ??= new GUIStyle(GUI.skin.label)
@@ -939,9 +949,8 @@ namespace NoWinners
             };
             int s = HudScale, pad = 6 * s;
             noteStyle.fontSize = Mathf.Max(13, 7 * s);
-            var r = HudRect;
-            float w = 500 * s, h = noteStyle.CalcHeight(new GUIContent(hover), w - 2 * pad - 3 * s) + 2 * pad; // Ends before the ESC hint at x 520.
-            var box = new UnityEngine.Rect(r.x + 8 * s, r.yMax - h - 8 * s, w, h);
+            float w = Mathf.Min(500 * s, Screen.width - 16 * s), h = noteStyle.CalcHeight(new GUIContent(hover), w - 2 * pad - 3 * s) + 2 * pad; // Ends before the ESC hint at x 520.
+            var box = new UnityEngine.Rect(8 * s, Screen.height - h - 8 * s, w, h);
             GUI.color = new Color(.07f, .07f, .07f, .94f);
             GUI.DrawTexture(box, Texture2D.whiteTexture);
             GUI.color = new Color(1, .82f, .23f);
