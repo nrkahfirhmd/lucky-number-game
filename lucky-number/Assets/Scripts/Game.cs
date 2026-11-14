@@ -868,26 +868,22 @@ namespace NoWinners
         static IEnumerable<Collider> Props(Game g) => g.Room.ActionProps.Values;
         static readonly Step[] Steps =
         {
-            new Step { Text = "This is your monitor. It lists every number from 00 to 99 and how many tickets were sold on each. Look for a number without holders.", Phase = 1, Targets = g => new[] { g.Room.MonitorScreen } },
-            new Step { Text = "These are your cards. Each one changes the number the machine draws. You get 1 new card every week, up to 5.", Phase = 1, Targets = Hand },
-            new Step { Text = "This bar shows your cash, the week, your streak and the prize. The prize is how much you pay winners. Cash hits 0 and you lose. Last 12 weeks to win.", Phase = 1, Targets = g => Enumerable.Empty<Collider>(), Bar = true },
-            new Step { Text = "This is the calendar. It marks the special weeks. Click it to read more.", Phase = 1, Looks = new[] { "monitor", "calendar" }, Clicks = true, Targets = g => new[] { g.Room.CalendarPaper } },
-            new Step { Text = $"You have {Config.Target:0} seconds to announce for a +{Config.Live} bonus. But you can run over the time: the host fills it with gags.",
-                Phase = 1, Targets = g => new[] { g.Room.ClockFace } },
-            new Step { Text = "The number is out. Click a card to change it, and aim for 0 holders or the smallest loss. Press SPACE or click the monitor to move closer.", Phase = 1,
+            new Step { Text = $"Each square is a number. The count is how many people bet on it. Up top: your cash. Run out and you're fired. Survive {Config.Weeks} weeks.",
+                Phase = 1, Targets = g => new[] { g.Room.MonitorScreen }, Bar = true },
+            new Step { Text = "The number is out. Click a card to change it into one nobody bet on. SPACE for a closer look.", Phase = 1,
                 Lean = true, Clicks = true, Done = g => g.Played.Count > 0 || g.Result != null, Targets = g => Enumerable.Range(0, g.S.Hand.Count).Where(g.CanPlay).Select(i => Box(g.Room.Cards[i])) },
-            new Step { Text = "Happy with the number? Press the red button to announce it. UNDO takes back your last card.", Phase = 1,
+            new Step { Text = $"Happy with it? Hit the red button to announce. Do it in {Config.Target:0}s for +{Config.Live} cash. Changed your mind? UNDO.", Phase = 1,
                 Lean = true, Clicks = true, Done = g => g.Result != null, Targets = g => new[] { g.Room.GoButton, g.Room.UndoButton } },
-            new Step { Text = "The TV shows how it went. Click once to see the board, and again for the next week.", Phase = 2,
+            new Step { Text = "Click to see the board. Click again for next week.", Phase = 2,
                 Looks = new[] { "tv", "monitor" }, Clicks = true, Done = g => g.S.Week > 1, Targets = g => Enumerable.Empty<Collider>() },
-            new Step { Text = "Next, the side table. Press D or click > to look over there.", Phase = 3, Looks = Side, Done = g => g.Station == "machine", Targets = Props },
-            new Step { Text = "You can use one helper a week. Point at one to see what it does, then click it.", Phase = 3,
+            new Step { Text = "Before the next show, get ready. Press D or click > to turn to the side table.", Phase = 3, Looks = Side, Done = g => g.Station == "machine", Targets = Props },
+            new Step { Text = "You can use one of these each week. Hover to see what it does, then click.", Phase = 3,
                 Looks = Side, Clicks = true, Done = g => g.S.Acted != null, Targets = g => Props(g).Append(g.Room.LiveSwitch) },
-            new Step { Text = "These are special cards. Each one replaces a card in your hand to help you get a better outcome.", Phase = 3,
+            new Step { Text = "These are special cards. Click one, then pick a card in your hand to swap it with.", Phase = 3,
                 Looks = Side, Clicks = true, Done = g => g.punched > 0 || g.S.Rack.Count == 0,
                 Targets = g => (g.Punching < 0 ? g.Room.Rack.Take(g.S.Rack.Count).Select(Box)
                     : Enumerable.Range(0, g.S.Hand.Count).Where(i => !g.S.Hand[i].IsSpecial).Select(i => Box(g.Room.Cards[i]))) },
-            new Step { Text = "Ready? Pull the GO LIVE lever. The machine will draw a random number.", Phase = 3,
+            new Step { Text = "All set? Pull the GO LIVE lever to start the show.", Phase = 3,
                 Looks = Side, Clicks = true, Done = g => g.Live, Targets = g => new[] { g.Room.LiveSwitch } },
         };
         public static int TutorialSteps => Steps.Length;

@@ -99,10 +99,10 @@ namespace NoWinners.Tests
             yield return Settle(Game.LockSeconds + .2f);
             Assert.IsTrue(game.Drawn);
             Shot(cam, "1-on-air");
-            StringAssert.StartsWith("This is your monitor", game.Tutorial, "the tutorial starts on a first run");
+            StringAssert.StartsWith("Each square is a number", game.Tutorial, "the tutorial starts on a first run");
             Assert.IsFalse(game.CanLook("machine"), "the coach keeps the camera on the step");
             Assert.IsFalse(game.CanLean);
-            for (int i = 0; i < 5; i++) game.TutorialSkip(); // TAB: one step each. Monitor, cards, bar, calendar, clock.
+            game.TutorialSkip(); // TAB: the one info step (board and bar).
             StringAssert.StartsWith("The number is out", game.Tutorial);
 
             // On air: seeded first roll, so one card reaches a free square.
@@ -122,7 +122,7 @@ namespace NoWinners.Tests
             Assert.AreEqual(to, game.Value);
             yield return null;
             Shot(cam, "3-card-played");
-            StringAssert.StartsWith("Happy with the number", game.Tutorial);
+            StringAssert.StartsWith("Happy with it", game.Tutorial);
             game.Click(At(game.Room.GoButton));
             Assert.AreEqual(Tier.Clean, game.Result.Air.Tier);
             Assert.AreEqual(1, game.S.Streak);
@@ -146,7 +146,7 @@ namespace NoWinners.Tests
             game.Click(Vector2.zero);
             Assert.AreEqual((2, false), (game.S.Week, game.Live), "after the show comes the prep for next week");
             yield return null;
-            StringAssert.StartsWith("Next, the side table", game.Tutorial);
+            StringAssert.StartsWith("Before the next show", game.Tutorial);
             Assert.IsTrue(game.CanLook("machine"));
             Assert.IsTrue(game.NavOn(1), "the > button is up for mouse-only play");
 
@@ -159,7 +159,7 @@ namespace NoWinners.Tests
             game.Look("machine"); // The desk actions are on the side table.
             yield return Settle();
             Shot(cam, "1b-side-table");
-            StringAssert.StartsWith("You can use one helper", game.Tutorial);
+            StringAssert.StartsWith("You can use one of these", game.Tutorial);
             CollectionAssert.Contains(game.TutorialTargets().ToList(), game.Room.ActionProps[DeskAction.Bribe], "the tutorial brackets the props it's about");
             File.WriteAllBytes("Logs/Shots/1b-tutorial-hud.png", game.Screens.Hud.Tex.EncodeToPNG());
             game.Click(At(game.Room.ActionProps[DeskAction.Bribe]));
