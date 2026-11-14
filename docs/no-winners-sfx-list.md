@@ -133,6 +133,7 @@ Written 2026-11-07 from the [GDD](GDD.md), the [art direction](no-winners-art-di
 | `room_lean_in` / `room_lean_out`: chair creak | SPACE or a monitor click | Should |
 | `desk_cash_register` (reused) / `desk_denied` (reused) | Slip or nephew pays / slip failed, after the result | Should |
 | `result_gift_card`: rising chime; `desk_card_lost` (reused) if the rack is full | A special card is won | Should |
+| `stall_interview` (reused): question, uncertain answer, murmur | 2.6 s after the result, when the TV cuts to the street interview | Should |
 | `intro_line`: low swell; `intro_reveal`: dark brass sting | Each backstory line; the last line | Should |
 
 ## Music (added 2026-11-10)

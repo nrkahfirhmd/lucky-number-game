@@ -251,6 +251,7 @@ namespace NoWinners
             if (a.SlipCash > 0 || a.Reward > 0) Later(2.1f, "desk_cash_register"); // A slip paid, or the minister did.
             else if (a.Slip != Slip.None && !a.SlipMet) Later(2.1f, "desk_denied");
             if (a.Gift != null) Later(2.6f, a.GiftLost ? "desk_card_lost" : "result_gift_card");
+            if (s.Over == Ending.None && Screens.Interview(r, s.Week) != null) Later(Screens.InterviewDelay, "stall_interview"); // The TV cuts to the street.
             if (s.Over == Ending.Lost)
             {
                 bool still = Prefs.ReduceMotion; // Screens.Collapse skips the squash with reduce motion.

@@ -24,7 +24,7 @@ namespace NoWinners
     public class WeekResult
     {
         public float At; // When it aired: the TV and the end cards time from here.
-        public int Number, From, Cards, CashBefore, StreakBefore;
+        public int Number, From, FromHolders, Cards, CashBefore, StreakBefore; // FromHolders: tickets on the honest number, for the street interview.
         public string Route, Line;
         public List<Card> Path, BestPath; // Copied at air time: the hand is trimmed right after.
         public List<int> Steps; // The number after each played card. JAM and REDRAW are random, so they're kept, not recomputed.
@@ -461,7 +461,7 @@ namespace NoWinners
             string steps = string.Join(" ", best.Path.Select(i => S.Hand[i].ToString()));
             Result = new WeekResult
             {
-                At = Time.time, Number = number, From = from, Best = best, Cards = Played.Count,
+                At = Time.time, Number = number, From = from, FromHolders = S.Board[from], Best = best, Cards = Played.Count,
                 Route = string.Join(" ", Played.Select(i => S.Hand[i].ToString())),
                 Line = steps.Length > 0 ? $"{from:00} {steps} = {best.To:00}" : $"{from:00} AS DRAWN",
                 Path = Played.Select(i => S.Hand[i]).ToList(),

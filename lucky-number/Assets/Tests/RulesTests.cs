@@ -507,5 +507,32 @@ namespace NoWinners.Tests
             Assert.That(smart.Rate, Is.InRange(55, 75), "smart bot drifted");
             Assert.That(smart.Rate - spends.Rate, Is.GreaterThanOrEqualTo(5), "saving cards should still beat spending freely");
         }
+
+        [Test]
+        public void Street_interview_follows_the_result()
+        {
+            WeekResult R(Tier tier, int from, int number, int fromHolders, int holders = 0, int reward = 0, int streak = 0) => new WeekResult
+            { From = from, Number = number, FromHolders = fromHolders, StreakBefore = streak, Air = new Announced { Tier = tier, Holders = holders, Reward = reward } };
+            var v = Screens.Interview(R(Tier.Clean, 42, 17, 3), 2).Value;
+            Assert.AreEqual("ONE OF 3 TICKETS ON 42", v.Held, "a clean rig asks someone you robbed");
+            Assert.IsFalse(v.Happy);
+            StringAssert.Contains("42", v.Quote);
+            Assert.IsNull(Screens.Interview(R(Tier.Clean, 42, 42, 3), 2), "nothing was rigged");
+            Assert.IsNull(Screens.Interview(R(Tier.Clean, 42, 17, 0), 2), "nobody held the honest number");
+            v = Screens.Interview(R(Tier.Scandal, 42, 17, 3, holders: 12), 2).Value;
+            Assert.AreEqual("ONE OF 12 WINNERS ON 17", v.Held);
+            Assert.IsTrue(v.Happy);
+            Assert.AreEqual("THE ONLY WINNER ON 17", Screens.Interview(R(Tier.Small, 42, 17, 3, holders: 1), 2).Value.Held);
+            StringAssert.Contains("NO RELATION", Screens.Interview(R(Tier.Small, 42, 17, 3, holders: 1, reward: 200), 2).Value.Name, "the nephew");
+            Assert.IsNull(Screens.Interview(null, 2));
+            var tiers = new[] { R(Tier.Clean, 0, 50, 1), R(Tier.Clean, 0, 50, 1, streak: 6), R(Tier.Small, 0, 0, 0, holders: 2), R(Tier.Scandal, 0, 0, 0, holders: 9), R(Tier.Small, 0, 0, 0, holders: 1, reward: 200) };
+            for (int w = 1; w <= 12; w++)
+                for (int n = 1; n < 100; n++)
+                    foreach (var r in tiers)
+                    {
+                        if (r.Air.Tier == Tier.Clean) r.From = n == 50 ? 51 : n; else r.Number = n;
+                        Assert.LessOrEqual(Screens.CachedWrap(Screens.Interview(r, w).Value.Quote, 44).Count, 5, "quote fits the TV");
+                    }
+        }
     }
 }

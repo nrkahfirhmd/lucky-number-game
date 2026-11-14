@@ -374,6 +374,7 @@ namespace NoWinners
 
         void ResultTv(Canvas8 g, float t)
         {
+            if (Interview(Result, S.Week) is { } iv && Time.time - Result.At >= InterviewDelay) { InterviewTv(g, t, iv); return; }
             var a = Result.Air;
             string n = $"{Result.Number:00}";
             string ticker = a.Reward > 0
@@ -400,6 +401,123 @@ namespace NoWinners
                 _ => "THE STATION IS THRILLED. REALLY."
             };
             g.Centred(subtext, 228, Ink);
+        }
+
+        // Street interview, cut to after the result card. Who speaks follows the result: a clean rig asks someone who held
+        // the honest number you rigged away, a win asks a winner, a nephew hit asks the nephew. Fixed per week and number.
+        public const float InterviewDelay = 2.6f;
+        public struct Vox { public string Name, Held, Quote; public int Who; public bool Happy; }
+        static readonly (string Name, Color32 Skin, Color32 Hair, Color32 Coat, int Style, bool Glasses, bool Tache)[] People =
+        {
+            ("MRS ADA, 71", H("#E8B48C"), H("#D8D8E0"), H("#5A2A9E"), 2, true, false),
+            ("DES, 54, BUS DRIVER", H("#C98A5E"), H("#3A2414"), H("#1A2AA8"), 3, false, true),
+            ("PRIYA, 29", H("#B07850"), H("#1A1018"), H("#C2187A"), 1, false, false),
+            ("MR OKAFOR, 66", H("#7A4A30"), H("#C8C8C8"), H("#3A1058"), 0, true, false),
+            ("GLENDA, 48", H("#F0C8A0"), H("#E8A040"), H("#FF8A1F"), 1, true, false),
+            ("KEV, 37", H("#E0A880"), H("#8A5A30"), H("#7A0F2E"), 3, false, false),
+            ("ROLAND, 23, NO RELATION", H("#D9A07A"), H("#8A8478"), H("#4A4E5E"), 1, false, false), // The Minister's nephew, in his uncle's grey.
+        };
+        const int Public = 6, NephewWho = 6;
+        // {0} the interviewee's number, {1} the number that aired.
+        static readonly string[] CleanQuotes =
+        {
+            "I HAD {0}. IT SAID {0} FOR A SECOND. I SWEAR IT DID.",
+            "{0} IS MY HOUSE NUMBER. AND MY AGE. AND MY BUS. WHO PICKS {1}?",
+            "I SAW {0}. I BLINKED. THEN IT WAS {1}. IS THAT ALLOWED?",
+            "FORTY YEARS ON {0}. NEXT WEEK, SURELY.",
+            "MY CAT CHOSE {0}. THE CAT IS VERY UPSET.",
+            "WHO EVEN HAS {1}? NOBODY. THAT'S THE POINT, ISN'T IT.",
+            "I'M BUYING TWO TICKETS NEXT WEEK. BOTH ON {0}. TO BE SAFE.",
+            "THE BALL WAS ROLLING STRAIGHT FOR {0}. THEN IT WASN'T.",
+        };
+        // Five clean weeks or more: the public has noticed.
+        static readonly string[] AngryQuotes =
+        {
+            "NOBODY WINS. EVER. WHO IS RUNNING THIS? I WANT A NAME.",
+            "I'VE STARTED A PETITION. IT'S ON {0}. LIKE MY TICKET.",
+            "MY WHOLE STREET HAD {0}. THE STREET IS FURIOUS.",
+            "SOMEONE IN THAT BUILDING KNOWS SOMETHING. I CAN FEEL IT.",
+            "{0} CAME UP. I SAW IT. THEN THE TELLY SAID {1}. EXPLAIN THAT.",
+        };
+        static readonly string[] WinQuotes =
+        {
+            "I WON! ON {0}! I'M BUYING A SLIGHTLY BETTER KETTLE.",
+            "FORTY YEARS AND IT FINALLY HAPPENED. WHAT DO I DO WITH MY SATURDAYS NOW?",
+            "I ONLY BOUGHT IT WITH MY BUS FARE CHANGE.",
+            "I'M SPLITTING IT WITH MY SISTER. SHE DOESN'T KNOW YET.",
+            "{0}! I TOLD YOU! I TOLD ALL OF YOU!",
+        };
+        static readonly string[] ScandalQuotes =
+        {
+            "ALL OF US HAD {0}. THE WHOLE BOWLING CLUB. DRINKS ARE ON THE STATE.",
+            "THE STATION SAYS IT'S THRILLED. IT DOESN'T LOOK THRILLED.",
+            "I'M QUITTING MY JOB. LIVE ON TELLY. HELLO, GARY.",
+            "{0} IS THE PEOPLE'S NUMBER NOW.",
+            "WE WON! WE ACTUALLY WON! IS THAT ALLOWED?",
+        };
+        static readonly string[] NephewQuotes =
+        {
+            "I JUST HAD A FEELING ABOUT {0}. A FAMILY FEELING.",
+            "UNCLE? NO. I DON'T HAVE AN UNCLE. WHO'S ASKING?",
+            "I'LL PUT IT TOWARDS SOMETHING SENSIBLE. LIKE A SECOND YACHT.",
+            "WHAT ARE THE ODDS. HONESTLY. WHAT ARE THEY.",
+        };
+
+        public static Vox? Interview(WeekResult r, int week)
+        {
+            var a = r?.Air;
+            if (a == null) return null;
+            bool clean = a.Tier == Tier.Clean && a.Reward == 0;
+            int n = clean ? r.From : r.Number, k = week * 7 + n;
+            string Say(string[] q) => "\"" + string.Format(q[k % q.Length], $"{n:00}", $"{r.Number:00}") + "\"";
+            string On(int h, string what) => h == 1 ? $"THE ONLY {what} ON {n:00}" : $"ONE OF {h} {what}S ON {n:00}";
+            Vox Person(int who, string held, string[] q, bool happy) => new Vox { Who = who, Name = People[who].Name, Held = held, Quote = Say(q), Happy = happy };
+            if (a.Reward > 0) return Person(NephewWho, "HIS UNCLE IS THE MINISTER", NephewQuotes, true);
+            if (clean)
+                return r.From == r.Number || r.FromHolders <= 0 ? (Vox?)null
+                    : Person(k % Public, On(r.FromHolders, "TICKET"), r.StreakBefore + 1 >= 5 ? AngryQuotes : CleanQuotes, false);
+            if (a.Holders <= 0) return null;
+            return Person(k % Public, On(a.Holders, "WINNER"), a.Tier == Tier.Small ? WinQuotes : ScandalQuotes, true);
+        }
+
+        static void InterviewTv(Canvas8 g, float t, Vox v)
+        {
+            Stage(g, t, "   WE ASKED THE PUBLIC   *   THE PUBLIC HAD THOUGHTS   *", header: false);
+            g.Centred("WE ASKED THE PUBLIC", 52, Label, 2, 2);
+            Face(g, 88, 88, People[v.Who], v.Happy);
+            var lines = CachedWrap(v.Quote, 44);
+            for (int i = 0; i < lines.Count && i < 5; i++) g.Text(lines[i], 216, 96 + i * 24, Ink, 1, 2);
+            g.Rect(80, 228, 480, 24, Label);
+            g.Text(v.Name, 88, 232, Bg, 1, 2);
+            g.Text(v.Held, 88, 258, Dim);
+        }
+
+        // Block-art head, 96x128. Losers frown with worried brows, winners grin.
+        static void Face(Canvas8 g, int x, int y, (string Name, Color32 Skin, Color32 Hair, Color32 Coat, int Style, bool Glasses, bool Tache) p, bool happy)
+        {
+            g.Rect(x - 8, y, 112, 128, Panel);
+            g.Rect(x + 8, y + 96, 80, 32, p.Coat);
+            g.Rect(x + 38, y + 82, 20, 14, p.Skin);
+            g.Rect(x + 24, y + 28, 48, 56, p.Skin);
+            g.Rect(x + 18, y + 48, 6, 12, p.Skin);
+            g.Rect(x + 72, y + 48, 6, 12, p.Skin);
+            switch (p.Style)
+            {
+                case 0: g.Rect(x + 20, y + 32, 6, 16, p.Hair); g.Rect(x + 70, y + 32, 6, 16, p.Hair); break; // Bald, side tufts.
+                case 1: g.Rect(x + 22, y + 20, 52, 14, p.Hair); g.Rect(x + 20, y + 30, 6, 30, p.Hair); g.Rect(x + 70, y + 30, 6, 30, p.Hair); break;
+                case 2: g.Rect(x + 22, y + 20, 52, 12, p.Hair); g.Rect(x + 38, y + 8, 20, 14, p.Hair); break; // Bun.
+                default: g.Rect(x + 26, y + 8, 44, 18, p.Coat); g.Rect(x + 16, y + 24, 64, 6, p.Coat); break; // Flat cap.
+            }
+            g.Rect(x + 34, y + 50, 6, 6, Bg);
+            g.Rect(x + 56, y + 50, 6, 6, Bg);
+            g.Rect(x + 32, y + 44, 10, 2, p.Hair);
+            g.Rect(x + 54, y + 44, 10, 2, p.Hair);
+            if (!happy) { g.Rect(x + 40, y + 42, 2, 2, p.Hair); g.Rect(x + 54, y + 42, 2, 2, p.Hair); }
+            if (p.Glasses) { g.Frame(x + 30, y + 46, 14, 14, Bg); g.Frame(x + 52, y + 46, 14, 14, Bg); g.Rect(x + 44, y + 52, 8, 2, Bg); }
+            if (p.Tache) g.Rect(x + 36, y + 64, 24, 6, p.Hair);
+            g.Rect(x + 40, y + 72, 16, 4, Curtain2);
+            g.Rect(x + 36, y + (happy ? 68 : 74), 4, 4, Curtain2);
+            g.Rect(x + 56, y + (happy ? 68 : 74), 4, 4, Curtain2);
         }
 
         static void SeasonOver(Canvas8 g, float t)
@@ -867,7 +985,7 @@ namespace NoWinners
         }
 
         static readonly Dictionary<string, List<string>> WrapCache = new Dictionary<string, List<string>>();
-        static List<string> CachedWrap(string text, int width)
+        public static List<string> CachedWrap(string text, int width)
         {
             if (string.IsNullOrEmpty(text)) return new List<string>();
             string key = width + ":" + text;
